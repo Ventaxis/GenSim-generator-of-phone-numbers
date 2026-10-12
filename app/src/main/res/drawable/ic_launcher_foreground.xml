@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- SIM Card Body (with iconic cut corner top right) -->
+    <path
+        android:pathData="M35,26 L65,26 L77,38 L77,80 C77,82.2 75.2,84 73,84 L35,84 C32.8,84 31,82.2 31,80 L31,30 C31,27.8 32.8,26 35,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="31"
+                android:startY="26"
+                android:endX="77"
+                android:endY="84"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFE082" />
+                <item android:offset="0.5" android:color="#FFB800" />
+                <item android:offset="1.0" android:color="#D97706" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- SIM Gold Chip Center -->
+    <path
+        android:pathData="M43,44 L65,44 C66.1,44 67,44.9 67,46 L67,64 C67,65.1 66.1,66 65,66 L43,66 C41.9,66 41,65.1 41,64 L41,46 C41,44.9 41.9,44 43,44 Z"
+        android:fillColor="#8C5503" />
+
+    <!-- Chip Contact Pads Pattern -->
+    <path
+        android:pathData="M43,46 L51,46 C51.6,46 52,46.4 52,47 L52,53 L43,53 C42.4,53 42,52.6 42,52 L42,47 C42,46.4 42.4,46 43,46 Z"
+        android:fillColor="#FFD54F" />
+
+    <path
+        android:pathData="M56,46 L65,46 C65.6,46 66,46.4 66,47 L66,52 C66,52.6 65.6,53 65,53 L56,53 L56,47 C56,46.4 56.4,46 56,46 Z"
+        android:fillColor="#FFD54F" />
+
+    <path
+        android:pathData="M43,57 L52,57 L52,64 C52,64.6 51.6,65 51,65 L43,65 C42.4,65 42,64.6 42,64 L42,58 C42,57.4 42.4,57 43,57 Z"
+        android:fillColor="#FFD54F" />
+
+    <path
+        android:pathData="M56,57 L66,57 L66,64 C66,64.6 65.6,65 65,65 L57,65 C56.4,65 56,64.6 56,64 L56,57 Z"
+        android:fillColor="#FFD54F" />
+
+    <!-- VIP Star on the card -->
+    <path
+        android:pathData="M54,32 L55.5,35.5 L59,36 L56.5,38.5 L57,42 L54,40 L51,42 L51.5,38.5 L49,36 L52.5,35.5 Z"
+        android:fillColor="#FFFFFF" />
+
+</vector>

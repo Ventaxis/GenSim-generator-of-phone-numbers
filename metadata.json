@@ -1,0 +1,6 @@
+{
+  "name": "СимГен: Блатные Номера",
+  "description": "Симулятор генератора блатных номеров телефонов с системой множителей префиксов и комбинаций.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
