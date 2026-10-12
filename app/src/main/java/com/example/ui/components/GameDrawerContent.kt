@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -65,7 +67,8 @@ enum class DrawerDestination {
     QUESTS,
     AUTO_SELL_SETTINGS,
     STATS,
-    LEVEL_PERKS
+    LEVEL_PERKS,
+    DIAGNOSTICS
 }
 
 @Composable
@@ -353,6 +356,13 @@ fun GameDrawerContent(
                         subtitle = "Фильтры рангов и цен",
                         icon = Icons.Default.Settings,
                         accentColor = Color(0xFFA78BFA)
+                    ),
+                    MenuItemData(
+                        id = DrawerDestination.DIAGNOSTICS,
+                        title = "Диагностика Room DB",
+                        subtitle = "bestNumber, rarityCounts, сырой дамп",
+                        icon = Icons.Default.Storage,
+                        accentColor = Color(0xFFF59E0B)
                     )
                 )
 
@@ -476,16 +486,26 @@ private fun DrawerItem(
             if (item.badgeCount > 0) {
                 Box(
                     modifier = Modifier
-                        .size(20.dp)
+                        .sizeIn(minWidth = 20.dp, minHeight = 20.dp)
                         .clip(CircleShape)
-                        .background(EmeraldProfit),
+                        .background(EmeraldProfit)
+                        .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "${item.badgeCount}",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color.Black
+                        color = Color.Black,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = androidx.compose.material3.LocalTextStyle.current.copy(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            ),
+                            lineHeight = 10.sp
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

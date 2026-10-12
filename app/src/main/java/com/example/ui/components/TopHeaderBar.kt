@@ -66,17 +66,21 @@ fun TopHeaderBar(
             ) {
                 Column {
                     Text(
-                        text = "СИМ-МАГНАТ",
+                        text = "СИМГЕН",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black,
                         color = GoldAccent,
-                        letterSpacing = 1.5.sp
+                        letterSpacing = 1.5.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "Блатные Номера РФ",
                         fontSize = 11.sp,
                         color = TextSecondary,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -110,7 +114,9 @@ fun TopHeaderBar(
                             text = GameViewModel.formatMoney(balance),
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 15.sp,
-                            color = EmeraldProfit
+                            color = EmeraldProfit,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -147,7 +153,8 @@ fun TopHeaderBar(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
-                        maxLines = 1
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -172,7 +179,9 @@ fun TopHeaderBar(
                         text = "+$passiveIncome ₽/с",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = EmeraldProfit
+                        color = EmeraldProfit,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -132,16 +133,26 @@ fun QuestsTab(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Box(
                                     modifier = Modifier
-                                        .size(16.dp)
+                                        .sizeIn(minWidth = 18.dp, minHeight = 18.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.Black else EmeraldProfit),
+                                        .background(if (isSelected) Color.Black else EmeraldProfit)
+                                        .padding(horizontal = 4.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "$unclaimedCount",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = if (isSelected) LiquidGoldStart else Color.Black
+                                        color = if (isSelected) LiquidGoldStart else Color.Black,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        style = androidx.compose.material3.LocalTextStyle.current.copy(
+                                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                includeFontPadding = false
+                                            ),
+                                            lineHeight = 10.sp
+                                        ),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }

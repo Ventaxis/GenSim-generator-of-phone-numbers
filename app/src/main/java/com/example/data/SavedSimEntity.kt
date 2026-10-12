@@ -36,10 +36,13 @@ data class SavedSimEntity(
             multipliersEncoded.split(";").mapNotNull { part ->
                 val tokens = part.split("|")
                 if (tokens.size >= 3) {
+                    val isHigh = tokens.last().toBoolean()
+                    val factor = tokens[tokens.size - 2].toDoubleOrNull() ?: 1.0
+                    val title = tokens.subList(0, tokens.size - 2).joinToString("|")
                     MultiplierDetail(
-                        title = tokens[0],
-                        factor = tokens[1].toDoubleOrNull() ?: 1.0,
-                        isHighlighted = tokens[2].toBoolean()
+                        title = title,
+                        factor = factor,
+                        isHighlighted = isHigh
                     )
                 } else null
             }

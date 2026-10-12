@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.LocalPolice
 import androidx.compose.material.icons.filled.MilitaryTech
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,7 +49,11 @@ import com.example.viewmodel.GameStats
 import com.example.viewmodel.GameViewModel
 
 @Composable
-fun StatsTab(stats: GameStats, levelInfo: PlayerLevelInfo) {
+fun StatsTab(
+    stats: GameStats,
+    levelInfo: PlayerLevelInfo,
+    onOpenDiagnostics: (() -> Unit)? = null
+) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -66,6 +73,62 @@ fun StatsTab(stats: GameStats, levelInfo: PlayerLevelInfo) {
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
+            }
+        }
+
+        if (onOpenDiagnostics != null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x22F59E0B))
+                        .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .clickable { onOpenDiagnostics() }
+                        .padding(12.dp)
+                        .testTag("open_diagnostic_log_btn")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = "ДИАГНОСТИКА ROOM DB",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = "Контроль персистентности: bestNumber и rarityCounts",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Text(
+                            text = "ОТКРЫТЬ →",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFFF59E0B),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
             }
         }
 
@@ -318,7 +381,9 @@ fun StatsTab(stats: GameStats, levelInfo: PlayerLevelInfo) {
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Black,
                             fontSize = 20.sp,
-                            color = TextPrimary
+                            color = TextPrimary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),

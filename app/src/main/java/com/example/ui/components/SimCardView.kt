@@ -151,8 +151,8 @@ fun SimCardView(
         modifier.fillMaxWidth()
     } else {
         modifier
-            .widthIn(max = 330.dp)
-            .fillMaxWidth(0.88f)
+            .widthIn(max = 360.dp)
+            .fillMaxWidth()
     }
 
     Box(
@@ -203,7 +203,9 @@ fun SimCardView(
                         fontWeight = FontWeight.Bold,
                         fontSize = if (isMini) 10.sp else 11.sp,
                         color = if (rarity.isGovOrSecret) rarity.primaryColor else Color(0xFF94A3B8),
-                        letterSpacing = 0.8.sp
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -276,9 +278,12 @@ fun SimCardView(
                     text = phoneNumber.formatted,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Black,
-                    fontSize = if (isMini) 15.sp else 20.sp,
-                    letterSpacing = 1.2.sp,
+                    fontSize = if (isMini) 13.sp else 16.5.sp,
+                    letterSpacing = 0.4.sp,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     color = when (rarity) {
                         RarityTier.FSB_KREMLIN -> LiquidGoldStart
                         RarityTier.POLICE_MVD -> Color(0xFF93C5FD)
@@ -315,7 +320,8 @@ fun SimCardView(
                         fontSize = if (isMini) 10.sp else 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF94A3B8),
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     if (rarity.prestigeStars > 0) {
                         Spacer(modifier = Modifier.width(4.dp))
@@ -430,7 +436,9 @@ fun MinimalRarityBadge(rarity: RarityTier, isMini: Boolean) {
             fontSize = if (isMini) 8.sp else 9.sp,
             fontWeight = FontWeight.Black,
             color = rarity.primaryColor,
-            letterSpacing = 0.4.sp
+            letterSpacing = 0.4.sp,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

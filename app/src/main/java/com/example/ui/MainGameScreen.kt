@@ -35,8 +35,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -50,12 +52,14 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -92,6 +96,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AutoSellConfig
 import com.example.ui.components.AutoRollSettingsDialog
+import com.example.ui.components.DiagnosticLogView
 import com.example.ui.components.DrawerDestination
 import com.example.ui.components.GameDrawerContent
 import com.example.ui.components.LevelPerksDialog
@@ -413,10 +418,10 @@ fun MainGameScreen(viewModel: GameViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Menu button
+                    // Menu button with notification badge for unclaimed quests
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(Color(0x281E293B))
                             .border(0.8.dp, GlassBorder, CircleShape)
@@ -428,8 +433,36 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             imageVector = Icons.Default.Menu,
                             contentDescription = "Меню",
                             tint = LiquidGoldStart,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(19.dp)
                         )
+                        if (unclaimedQuests > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 2.dp, y = (-2).dp)
+                                    .sizeIn(minWidth = 15.dp, minHeight = 15.dp)
+                                    .clip(CircleShape)
+                                    .background(EmeraldProfit)
+                                    .padding(horizontal = 2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$unclaimedQuests",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.Black,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    style = androidx.compose.material3.LocalTextStyle.current.copy(
+                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                            includeFontPadding = false
+                                        ),
+                                        lineHeight = 8.5.sp
+                                    ),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
                     }
 
                     // Level XP Indicator Capsule
@@ -455,13 +488,17 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                 text = "Ур. ${levelInfo.level}",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = LiquidGoldStart
+                                color = LiquidGoldStart,
+                                maxLines = 1,
+                                softWrap = false
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = "${(levelInfo.progressFraction * 100).toInt()}%",
                                 fontSize = 10.sp,
-                                color = TextSecondary
+                                color = TextSecondary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -480,7 +517,9 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             text = GameViewModel.formatMoney(balance),
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 13.sp,
-                            color = EmeraldProfit
+                            color = EmeraldProfit,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -614,7 +653,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     val isVaulted = isCurrentSaved || currentNumber?.isInVault == true
-                                    // Save to Vault
+                                     // Save to Vault
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(18.dp))
@@ -625,7 +664,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                                 RoundedCornerShape(18.dp)
                                             )
                                             .clickable { viewModel.saveCurrentToVault() }
-                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
                                             .testTag("quick_save_btn"),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -636,12 +675,15 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                                 tint = if (isVaulted) EmeraldProfit else LiquidGoldMid,
                                                 modifier = Modifier.size(14.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isVaulted) "В сейфе ✓" else "В сейф (${viewModel.vaultCount}/${viewModel.vaultCapacity})",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (isVaulted) EmeraldProfit else TextPrimary
+                                                color = if (isVaulted) EmeraldProfit else TextPrimary,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
                                         }
                                     }
@@ -657,8 +699,8 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                                 if (canQuickSell) Color(0x6610B981) else Color.White.copy(alpha = 0.15f),
                                                 RoundedCornerShape(18.dp)
                                             )
-                                            .clickable { viewModel.sellCurrent() }
-                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                            .clickable(enabled = canQuickSell) { viewModel.sellCurrent() }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
                                             .testTag("quick_sell_btn"),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -669,11 +711,15 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                                 tint = if (canQuickSell) EmeraldProfit else TextSecondary,
                                                 modifier = Modifier.size(14.dp)
                                             )
+                                            Spacer(modifier = Modifier.width(3.dp))
                                             Text(
                                                 text = if (canQuickSell) "Продать (+${GameViewModel.formatMoney(currentNumber?.value ?: 0)})" else "В сейфе 🔒",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = if (canQuickSell) EmeraldProfit else TextSecondary
+                                                color = if (canQuickSell) EmeraldProfit else TextSecondary,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
                                         }
                                     }
@@ -731,7 +777,9 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Black,
                                 color = LiquidGoldStart,
-                                letterSpacing = 0.5.sp
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -767,7 +815,9 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                 text = if (isAuto) "СТОП" else "АВТО",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = if (isAuto) Color.White else TextPrimary
+                                color = if (isAuto) Color.White else TextPrimary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -887,6 +937,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                     DrawerDestination.INVENTORY -> "Инвентарь"
                                     DrawerDestination.UPGRADES -> "Магазин и Улучшения"
                                     DrawerDestination.STATS -> "Досье и Справочник"
+                                    DrawerDestination.DIAGNOSTICS -> "Диагностика Room DB"
                                     else -> ""
                                 },
                                 fontWeight = FontWeight.Black,
@@ -917,7 +968,12 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             )
                             DrawerDestination.STATS -> StatsTab(
                                 stats = stats,
-                                levelInfo = levelInfo
+                                levelInfo = levelInfo,
+                                onOpenDiagnostics = { currentSubScreen = DrawerDestination.DIAGNOSTICS }
+                            )
+                            DrawerDestination.DIAGNOSTICS -> DiagnosticLogView(
+                                viewModel = viewModel,
+                                onClose = { currentSubScreen = DrawerDestination.NONE }
                             )
                             else -> {}
                         }
@@ -942,38 +998,70 @@ fun BottomNavTabItem(
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .clickable { onClick() }
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
-        Box(contentAlignment = Alignment.TopEnd) {
+        Box(
+            modifier = Modifier.padding(top = 2.dp),
+            contentAlignment = Alignment.TopEnd
+        ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isBadgeHighlight) EmeraldProfit else LiquidGoldStart,
-                modifier = Modifier.size(19.dp)
+                modifier = Modifier
+                    .padding(end = if (badgeText != null && isBadgeHighlight) 4.dp else 0.dp)
+                    .size(20.dp)
             )
-            if (isBadgeHighlight) {
+            if (badgeText != null && isBadgeHighlight) {
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
+                        .offset(x = 8.dp, y = (-4).dp)
+                        .sizeIn(minWidth = 16.dp, minHeight = 16.dp)
                         .clip(CircleShape)
                         .background(EmeraldProfit)
-                )
+                        .padding(horizontal = 3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.Black,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = androidx.compose.material3.LocalTextStyle.current.copy(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            ),
+                            lineHeight = 9.sp
+                        ),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
-        Spacer(modifier = Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(modifier = Modifier.height(3.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
             Text(
                 text = label,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                color = if (isBadgeHighlight) EmeraldProfit else TextPrimary,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             if (badgeText != null && !isBadgeHighlight) {
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = badgeText,
-                    fontSize = 9.sp,
-                    color = TextSecondary
+                    fontSize = 8.5.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

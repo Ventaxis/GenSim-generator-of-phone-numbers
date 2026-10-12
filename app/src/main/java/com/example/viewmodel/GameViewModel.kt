@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.GamePreferences
+import com.example.data.GameStatsEntity
 import com.example.data.SavedSimEntity
 import com.example.generator.PhoneGenerator
 import com.example.model.AutoSellConfig
@@ -15,6 +16,7 @@ import com.example.model.Quest
 import com.example.model.QuestPeriod
 import com.example.model.RarityTier
 import com.example.model.UpgradeType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,12 +43,40 @@ data class GameStats(
     val rarityCounts: Map<RarityTier, Int> = emptyMap()
 )
 
+data class RoomDiagnosticData(
+    val dbName: String = "sim_tycoon.db",
+    val dbVersion: Int = 3,
+    val savedSimsCount: Int = 0,
+    val savedSimsRawRows: List<Map<String, Any?>> = emptyList(),
+    val gameStatsRawRow: Map<String, Any?>? = null,
+    val memoryBestNumber: PhoneNumber? = null,
+    val memoryRarityCounts: Map<RarityTier, Int> = emptyMap(),
+    val memoryTotalRolls: Long = 0,
+    val memoryTotalEarned: Long = 0,
+    val prefsBestNumber: PhoneNumber? = null,
+    val prefsRarityCounts: Map<RarityTier, Int> = emptyMap(),
+    val prefsTotalRolls: Long = 0,
+    val prefsTotalEarned: Long = 0,
+    val roomBestNumberFormatted: String? = null,
+    val roomBestNumberValue: Long? = null,
+    val roomBestNumberRarity: String? = null,
+    val roomRarityCounts: Map<RarityTier, Int> = emptyMap(),
+    val roomTotalRolls: Long = 0,
+    val roomTotalEarned: Long = 0,
+    val isBestNumberPersisted: Boolean = false,
+    val isRarityCountsPersisted: Boolean = false,
+    val isOverallPersistenceOk: Boolean = false,
+    val eventLogs: List<String> = emptyList(),
+    val lastCheckedTimestamp: Long = System.currentTimeMillis()
+)
+
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     val rollCost: Long = 50
 
     private val db = AppDatabase.getInstance(application)
     private val simDao = db.savedSimDao()
+    private val gameStatsDao = db.gameStatsDao()
     private val prefs = GamePreferences(application)
 
     private val _balance = MutableStateFlow(prefs.loadBalance(2_500L))
@@ -82,9 +112,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     val upgrades: StateFlow<Map<String, Int>> = _upgrades.asStateFlow()
 
     private val _autoSellConfig = MutableStateFlow(
-        AutoSellConfig(
-            minKeepPrice = 1_800,
-            autoSellBelowRarity = RarityTier.SILVER
+        prefs.loadAutoSellConfig(
+            AutoSellConfig(
+                minKeepPrice = 1_800,
+                autoSellBelowRarity = RarityTier.SILVER
+            )
         )
     )
     val autoSellConfig: StateFlow<AutoSellConfig> = _autoSellConfig.asStateFlow()
@@ -92,8 +124,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val savedStats = prefs.loadStats()
     private val _stats = MutableStateFlow(
         GameStats(
-            totalRolls = savedStats.first,
-            totalEarned = savedStats.second
+            totalRolls = savedStats.totalRolls,
+            totalEarned = savedStats.totalEarned,
+            bestNumber = savedStats.bestNumber,
+            rarityCounts = savedStats.rarityCounts
         )
     )
     val stats: StateFlow<GameStats> = _stats.asStateFlow()
@@ -107,7 +141,91 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private val _events = MutableSharedFlow<GameEvent>()
     val events: SharedFlow<GameEvent> = _events.asSharedFlow()
 
+    private val _diagnosticData = MutableStateFlow(RoomDiagnosticData())
+    val diagnosticData: StateFlow<RoomDiagnosticData> = _diagnosticData.asStateFlow()
+
+    private val _diagnosticLogs = MutableStateFlow<List<String>>(emptyList())
+    val diagnosticLogs: StateFlow<List<String>> = _diagnosticLogs.asStateFlow()
+
+    fun addDiagnosticLog(message: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val entry = "[$time] $message"
+        _diagnosticLogs.update { (it + entry).takeLast(100) }
+    }
+
+    fun refreshDiagnosticData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val rawSims = db.getRawTableContent("saved_sims")
+                val rawStatsList = db.getRawTableContent("game_stats_log")
+                val rawStats = rawStatsList.firstOrNull()
+
+                val memStats = _stats.value
+                val loadedPrefs = prefs.loadStats()
+
+                val roomRolls = (rawStats?.get("totalRolls") as? Number)?.toLong() ?: 0L
+                val roomEarned = (rawStats?.get("totalEarned") as? Number)?.toLong() ?: 0L
+                val roomBestFormatted = rawStats?.get("bestNumberFormatted") as? String
+                val roomBestValue = (rawStats?.get("bestNumberValue") as? Number)?.toLong()
+                val roomBestRarity = rawStats?.get("bestNumberRarity") as? String
+                val roomRarityStr = rawStats?.get("rarityCountsJson") as? String ?: ""
+                val roomRarityMap = mutableMapOf<RarityTier, Int>()
+                if (roomRarityStr.isNotBlank()) {
+                    roomRarityStr.split(";").forEach { item ->
+                        val parts = item.split(":")
+                        if (parts.size == 2) {
+                            try {
+                                val tier = RarityTier.valueOf(parts[0])
+                                val count = parts[1].toIntOrNull() ?: 0
+                                roomRarityMap[tier] = count
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+
+                val bestPersisted = if (memStats.bestNumber == null) {
+                    loadedPrefs.bestNumber == null
+                } else {
+                    loadedPrefs.bestNumber?.id == memStats.bestNumber.id
+                }
+
+                val rarityPersisted = memStats.rarityCounts == loadedPrefs.rarityCounts
+                val overallOk = bestPersisted && rarityPersisted
+
+                _diagnosticData.value = RoomDiagnosticData(
+                    dbName = "sim_tycoon.db",
+                    dbVersion = 3,
+                    savedSimsCount = rawSims.size,
+                    savedSimsRawRows = rawSims,
+                    gameStatsRawRow = rawStats,
+                    memoryBestNumber = memStats.bestNumber,
+                    memoryRarityCounts = memStats.rarityCounts,
+                    memoryTotalRolls = memStats.totalRolls,
+                    memoryTotalEarned = memStats.totalEarned,
+                    prefsBestNumber = loadedPrefs.bestNumber,
+                    prefsRarityCounts = loadedPrefs.rarityCounts,
+                    prefsTotalRolls = loadedPrefs.totalRolls,
+                    prefsTotalEarned = loadedPrefs.totalEarned,
+                    roomBestNumberFormatted = roomBestFormatted,
+                    roomBestNumberValue = roomBestValue,
+                    roomBestNumberRarity = roomBestRarity,
+                    roomRarityCounts = roomRarityMap,
+                    roomTotalRolls = roomRolls,
+                    roomTotalEarned = roomEarned,
+                    isBestNumberPersisted = bestPersisted,
+                    isRarityCountsPersisted = rarityPersisted,
+                    isOverallPersistenceOk = overallOk,
+                    eventLogs = _diagnosticLogs.value,
+                    lastCheckedTimestamp = System.currentTimeMillis()
+                )
+            } catch (e: Exception) {
+                addDiagnosticLog("Ошибка опроса Room DB для диагностики: ${e.message}")
+            }
+        }
+    }
+
     private var autoRollJob: Job? = null
+    private var isRoomInitialized = false
 
     val vaultCount: Int
         get() = _inventory.value.count { it.isInVault }
@@ -133,23 +251,108 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     val unclaimedQuestsCount: Int
         get() = _quests.value.count { it.isCompleted && !it.isClaimed }
 
+    private fun persistStats() {
+        val s = _stats.value
+        prefs.saveStats(s.totalRolls, s.totalEarned, s.bestNumber, s.rarityCounts)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                gameStatsDao.insertOrUpdate(
+                    GameStatsEntity(
+                        id = "stats_record",
+                        totalRolls = s.totalRolls,
+                        totalEarned = s.totalEarned,
+                        bestNumberId = s.bestNumber?.id,
+                        bestNumberFormatted = s.bestNumber?.formatted,
+                        bestNumberValue = s.bestNumber?.value,
+                        bestNumberRarity = s.bestNumber?.rarity?.name,
+                        bestNumberJson = s.bestNumber?.toJson(),
+                        rarityCountsJson = s.rarityCounts.entries.joinToString(";") { "${it.key.name}:${it.value}" },
+                        lastUpdatedTimestamp = System.currentTimeMillis()
+                    )
+                )
+                addDiagnosticLog("Room DB & Prefs: сохранено bestNumber=${s.bestNumber?.formatted ?: "null"}, rarityCounts=${s.rarityCounts.size} категорий")
+                refreshDiagnosticData()
+            } catch (e: Exception) {
+                addDiagnosticLog("Ошибка записи статистики в Room DB: ${e.message}")
+            }
+        }
+    }
+
+    private fun trimInventoryToLimit(list: MutableList<PhoneNumber>) {
+        val deletedIds = mutableListOf<String>()
+        while (list.size > MAX_INVENTORY_SIZE) {
+            val candidateIndex = list.indexOfLast { !it.isInVault && it.id != _activeSim.value?.id }
+            if (candidateIndex != -1) {
+                val removed = list.removeAt(candidateIndex)
+                deletedIds.add(removed.id)
+            } else {
+                break
+            }
+        }
+        if (deletedIds.isNotEmpty()) {
+            viewModelScope.launch {
+                try {
+                    deletedIds.forEach { simDao.deleteSimById(it) }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun checkPassiveIncomeQuest() {
+        updateQuestProgress("monthly_passive_income", passiveIncomePerSec, isAbsolute = true)
+    }
+
     init {
-        // Collect saved SIMs from Room Database and ensure bidirectional synchronization
+        // Collect saved SIMs from Room Database and ensure bidirectional synchronization with preferences/backup
         viewModelScope.launch {
             simDao.getAllSavedSims().collect { entities ->
+                val backupSims = prefs.loadInventoryBackup()
                 if (entities.isNotEmpty()) {
+                    isRoomInitialized = true
                     val domainList = entities.map { it.toDomain() }
                     _inventory.value = domainList
                     prefs.saveInventoryBackup(domainList)
+
+                    // If active SIM is not set, pick the first saved number
                     if (_activeSim.value == null) {
-                        _activeSim.value = domainList.first()
-                        prefs.saveActiveSim(domainList.first())
+                        val first = domainList.firstOrNull()
+                        if (first != null) {
+                            _activeSim.value = first
+                            prefs.saveActiveSim(first)
+                            checkPassiveIncomeQuest()
+                        }
                     }
-                } else if (_inventory.value.isNotEmpty()) {
-                    // Populate Room from backup if Room was wiped or is cold
-                    _inventory.value.forEach { sim ->
-                        simDao.insertSim(SavedSimEntity.fromDomain(sim))
+
+                    // Check if backup had any additional SIMs from older version not yet in Room
+                    val entityIds = domainList.map { it.id }.toSet()
+                    val missingFromRoom = backupSims.filter { it.id !in entityIds }
+                    if (missingFromRoom.isNotEmpty()) {
+                        missingFromRoom.forEach { missingSim ->
+                            try {
+                                simDao.insertSim(SavedSimEntity.fromDomain(missingSim))
+                            } catch (_: Exception) {}
+                        }
                     }
+                } else if (!isRoomInitialized && backupSims.isNotEmpty()) {
+                    // Populate Room from backup if Room was freshly created/cleared during migration
+                    isRoomInitialized = true
+                    _inventory.value = backupSims
+                    backupSims.forEach { sim ->
+                        try {
+                            simDao.insertSim(SavedSimEntity.fromDomain(sim))
+                        } catch (_: Exception) {}
+                    }
+                    if (_activeSim.value == null) {
+                        val first = backupSims.firstOrNull()
+                        if (first != null) {
+                            _activeSim.value = first
+                            prefs.saveActiveSim(first)
+                            checkPassiveIncomeQuest()
+                        }
+                    }
+                } else if (isRoomInitialized) {
+                    _inventory.value = emptyList()
+                    prefs.saveInventoryBackup(emptyList())
                 }
             }
         }
@@ -164,6 +367,87 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             prefs.saveCurrentNumber(initialNumber)
         }
 
+        addDiagnosticLog("Инициализация приложения: Room БД sim_tycoon.db подключена.")
+        addDiagnosticLog("Загрузка статистики: rolls=${savedStats.totalRolls}, earned=${savedStats.totalEarned}, bestNumber=${savedStats.bestNumber?.formatted ?: "null"}, rarityTiers=${savedStats.rarityCounts.size}")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existing = gameStatsDao.getStats()
+                if (existing == null) {
+                    val s = _stats.value
+                    gameStatsDao.insertOrUpdate(
+                        GameStatsEntity(
+                            id = "stats_record",
+                            totalRolls = s.totalRolls,
+                            totalEarned = s.totalEarned,
+                            bestNumberId = s.bestNumber?.id,
+                            bestNumberFormatted = s.bestNumber?.formatted,
+                            bestNumberValue = s.bestNumber?.value,
+                            bestNumberRarity = s.bestNumber?.rarity?.name,
+                            bestNumberJson = s.bestNumber?.toJson(),
+                            rarityCountsJson = s.rarityCounts.entries.joinToString(";") { "${it.key.name}:${it.value}" },
+                            lastUpdatedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                    addDiagnosticLog("Первичная синхронизация Room DB: создана запись game_stats_log")
+                } else {
+                    // Bidirectional sync with existing stats from old version/Room DB
+                    val currentMem = _stats.value
+                    val mergedRolls = maxOf(currentMem.totalRolls, existing.totalRolls)
+                    val mergedEarned = maxOf(currentMem.totalEarned, existing.totalEarned)
+                    val existingBest = if (!existing.bestNumberJson.isNullOrBlank()) PhoneNumber.fromJson(existing.bestNumberJson) else null
+                    val mergedBest = when {
+                        currentMem.bestNumber == null -> existingBest
+                        existingBest == null -> currentMem.bestNumber
+                        existingBest.value > currentMem.bestNumber.value -> existingBest
+                        else -> currentMem.bestNumber
+                    }
+                    val existingRarities = mutableMapOf<RarityTier, Int>()
+                    if (existing.rarityCountsJson.isNotBlank()) {
+                        existing.rarityCountsJson.split(";").forEach { item ->
+                            val parts = item.split(":")
+                            if (parts.size == 2) {
+                                try {
+                                    val tier = RarityTier.valueOf(parts[0])
+                                    existingRarities[tier] = parts[1].toIntOrNull() ?: 0
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    val mergedRarities = currentMem.rarityCounts.toMutableMap()
+                    existingRarities.forEach { (tier, count) ->
+                        mergedRarities[tier] = maxOf(mergedRarities[tier] ?: 0, count)
+                    }
+
+                    _stats.value = GameStats(
+                        totalRolls = mergedRolls,
+                        totalEarned = mergedEarned,
+                        bestNumber = mergedBest,
+                        rarityCounts = mergedRarities
+                    )
+                    prefs.saveStats(mergedRolls, mergedEarned, mergedBest, mergedRarities)
+                    gameStatsDao.insertOrUpdate(
+                        GameStatsEntity(
+                            id = "stats_record",
+                            totalRolls = mergedRolls,
+                            totalEarned = mergedEarned,
+                            bestNumberId = mergedBest?.id,
+                            bestNumberFormatted = mergedBest?.formatted,
+                            bestNumberValue = mergedBest?.value,
+                            bestNumberRarity = mergedBest?.rarity?.name,
+                            bestNumberJson = mergedBest?.toJson(),
+                            rarityCountsJson = mergedRarities.entries.joinToString(";") { "${it.key.name}:${it.value}" },
+                            lastUpdatedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                    addDiagnosticLog("В Room DB синхронизированы сохранённые данные: rolls=$mergedRolls, best=${mergedBest?.formatted ?: "null"}")
+                }
+                refreshDiagnosticData()
+            } catch (e: Exception) {
+                addDiagnosticLog("Ошибка инициализации game_stats_log: ${e.message}")
+            }
+        }
+
         startPassiveIncomeLoop()
     }
 
@@ -176,9 +460,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     _balance.update { it + income }
                     prefs.saveBalance(_balance.value)
                     _stats.update { it.copy(totalEarned = it.totalEarned + income) }
-                    prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
-                    updateQuestProgress("monthly_passive_income", income.toInt())
+                    persistStats()
                 }
+                checkPassiveIncomeQuest()
             }
         }
     }
@@ -191,7 +475,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         _balance.update { it - rollCost }
         prefs.saveBalance(_balance.value)
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
 
         val mvdLvl = _upgrades.value[UpgradeType.MVD_INSIDER.id] ?: 0
         val goldLvl = _upgrades.value[UpgradeType.GOLDEN_DATABASE.id] ?: 0
@@ -201,20 +484,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         _isCurrentSaved.value = false
         prefs.saveCurrentNumber(generated)
 
-        // Add to inventory so player can see it in Inventory anytime
+        // Add to inventory ensuring no duplicates and respecting limit
         val currentList = _inventory.value.toMutableList()
+        currentList.removeAll { it.id == generated.id }
         currentList.add(0, generated)
-        if (currentList.size > 200) {
-            val oldestUnsavedIndex = currentList.indexOfLast { !it.isInVault && it.id != _activeSim.value?.id }
-            if (oldestUnsavedIndex != -1) {
-                val removed = currentList.removeAt(oldestUnsavedIndex)
-                viewModelScope.launch { simDao.deleteSimById(removed.id) }
-            }
-        }
+        trimInventoryToLimit(currentList)
         _inventory.value = currentList
         prefs.saveInventoryBackup(currentList)
         viewModelScope.launch {
-            simDao.insertSim(SavedSimEntity.fromDomain(generated))
+            try {
+                simDao.insertSim(SavedSimEntity.fromDomain(generated))
+            } catch (_: Exception) {}
         }
 
         recordStats(generated)
@@ -273,21 +553,37 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sellCurrent() {
         val current = _currentNumber.value ?: return
+        if (current.isInVault || _inventory.value.any { it.id == current.id && it.isInVault }) {
+            showNotification("Номер заблокирован в сейфе! Сначала извлеките его.")
+            return
+        }
+
         _balance.update { it + current.value }
         prefs.saveBalance(_balance.value)
         _stats.update { it.copy(totalEarned = it.totalEarned + current.value) }
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
+        persistStats()
         showNotification("Продано: +${formatMoney(current.value)}")
-        updateQuestProgress("daily_earn_3k", current.value.toInt())
+        updateQuestProgress("daily_earn_3k", current.value)
 
         val updated = _inventory.value.filter { it.id != current.id }
         _inventory.value = updated
         prefs.saveInventoryBackup(updated)
         viewModelScope.launch {
-            simDao.deleteSimById(current.id)
+            try {
+                simDao.deleteSimById(current.id)
+            } catch (_: Exception) {}
         }
+
+        if (_activeSim.value?.id == current.id) {
+            val nextSim = updated.firstOrNull()
+            _activeSim.value = nextSim
+            prefs.saveActiveSim(nextSim)
+            checkPassiveIncomeQuest()
+        }
+
         _currentNumber.value = null
         _isCurrentSaved.value = true
+        prefs.saveCurrentNumber(null)
     }
 
     fun saveCurrentToVault(): Boolean {
@@ -307,22 +603,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         prefs.saveCurrentNumber(updatedCurrent)
 
         val updated = _inventory.value.toMutableList()
-        val idx = updated.indexOfFirst { it.id == current.id }
-        if (idx != -1) {
-            updated[idx] = updatedCurrent
-        } else {
-            updated.add(0, updatedCurrent)
-        }
+        updated.removeAll { it.id == current.id }
+        updated.add(0, updatedCurrent)
+        trimInventoryToLimit(updated)
         _inventory.value = updated
         prefs.saveInventoryBackup(updated)
 
         viewModelScope.launch {
-            simDao.insertSim(SavedSimEntity.fromDomain(updatedCurrent))
+            try {
+                simDao.insertSim(SavedSimEntity.fromDomain(updatedCurrent))
+            } catch (_: Exception) {}
         }
 
         showNotification("Сохранено в сейф! 🔒")
         updateQuestProgress("daily_vault_1", 1)
-        updateQuestProgress("monthly_vault_8", vaultCount, isAbsolute = true)
+        updateQuestProgress("monthly_vault_8", vaultCount.toLong(), isAbsolute = true)
         return true
     }
 
@@ -338,7 +633,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             _inventory.value = updated
             prefs.saveInventoryBackup(updated)
             viewModelScope.launch {
-                simDao.updateVaultStatus(number.id, true)
+                try {
+                    simDao.updateVaultStatus(number.id, true)
+                } catch (_: Exception) {}
             }
             if (_currentNumber.value?.id == number.id) {
                 _currentNumber.value = _currentNumber.value?.copy(isInVault = true)
@@ -346,7 +643,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
             showNotification("Номер добавлен в сейф! 🔒")
             updateQuestProgress("daily_vault_1", 1)
-            updateQuestProgress("monthly_vault_8", vaultCount, isAbsolute = true)
+            updateQuestProgress("monthly_vault_8", vaultCount.toLong(), isAbsolute = true)
         } else {
             val updated = _inventory.value.map {
                 if (it.id == number.id) it.copy(isInVault = false) else it
@@ -354,7 +651,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             _inventory.value = updated
             prefs.saveInventoryBackup(updated)
             viewModelScope.launch {
-                simDao.updateVaultStatus(number.id, false)
+                try {
+                    simDao.updateVaultStatus(number.id, false)
+                } catch (_: Exception) {}
             }
             if (_currentNumber.value?.id == number.id) {
                 _currentNumber.value = _currentNumber.value?.copy(isInVault = false)
@@ -364,27 +663,36 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sellFromInventory(number: PhoneNumber) {
+        if (number.isInVault || _inventory.value.any { it.id == number.id && it.isInVault }) {
+            showNotification("Номер находится в сейфе! Сначала извлеките его.")
+            return
+        }
+
         val updated = _inventory.value.filter { it.id != number.id }
         _inventory.value = updated
         prefs.saveInventoryBackup(updated)
 
         viewModelScope.launch {
-            simDao.deleteSimById(number.id)
+            try {
+                simDao.deleteSimById(number.id)
+            } catch (_: Exception) {}
         }
         if (_activeSim.value?.id == number.id) {
-            val nextSim = _inventory.value.firstOrNull { it.id != number.id } ?: _currentNumber.value
+            val nextSim = updated.firstOrNull() ?: if (_currentNumber.value?.id != number.id) _currentNumber.value else null
             _activeSim.value = nextSim
             prefs.saveActiveSim(nextSim)
+            checkPassiveIncomeQuest()
         }
         if (_currentNumber.value?.id == number.id) {
             _currentNumber.value = null
+            prefs.saveCurrentNumber(null)
         }
         _balance.update { it + number.value }
         prefs.saveBalance(_balance.value)
         _stats.update { it.copy(totalEarned = it.totalEarned + number.value) }
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
+        persistStats()
         showNotification("SIM продана за ${formatMoney(number.value)}")
-        updateQuestProgress("daily_earn_3k", number.value.toInt())
+        updateQuestProgress("daily_earn_3k", number.value)
     }
 
     fun sellAllCommonFromInventory() {
@@ -402,22 +710,26 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         prefs.saveInventoryBackup(updated)
 
         viewModelScope.launch {
-            toSellIds.forEach { simDao.deleteSimById(it) }
+            try {
+                toSellIds.forEach { simDao.deleteSimById(it) }
+            } catch (_: Exception) {}
         }
         if (_currentNumber.value?.id in toSellIds) {
             _currentNumber.value = null
+            prefs.saveCurrentNumber(null)
         }
         _balance.update { it + totalGain }
         prefs.saveBalance(_balance.value)
         _stats.update { it.copy(totalEarned = it.totalEarned + totalGain) }
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
+        persistStats()
         showNotification("Продано ${itemsToSell.size} обычных номеров (+${formatMoney(totalGain)})")
-        updateQuestProgress("daily_earn_3k", totalGain.toInt())
+        updateQuestProgress("daily_earn_3k", totalGain)
     }
 
     fun setActiveSim(number: PhoneNumber) {
         _activeSim.value = number
         prefs.saveActiveSim(number)
+        checkPassiveIncomeQuest()
         showNotification("Установлена как основная SIM в телефон!")
         viewModelScope.launch {
             _events.emit(GameEvent.Haptic(true))
@@ -425,94 +737,118 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleAutoRoll() {
-        val newState = !_autoSellConfig.value.isAutoRolling
-        _autoSellConfig.update { it.copy(isAutoRolling = newState) }
-
-        if (newState) {
-            startAutoRoll()
-        } else {
+        if (_autoSellConfig.value.isAutoRolling) {
             stopAutoRoll()
+        } else {
+            startAutoRoll()
         }
     }
 
     fun updateAutoSellConfig(config: AutoSellConfig) {
         _autoSellConfig.value = config
+        prefs.saveAutoSellConfig(config)
     }
 
     private fun startAutoRoll() {
-        autoRollJob?.cancel()
+        stopAutoRoll()
+        _autoSellConfig.update { it.copy(isAutoRolling = true) }
         autoRollJob = viewModelScope.launch {
-            val turboLvl = _upgrades.value[UpgradeType.TURBO_ROLL.id] ?: 0
-            val interval = (130L - (turboLvl * 18L)).coerceAtLeast(40L)
+            try {
+                val turboLvl = _upgrades.value[UpgradeType.TURBO_ROLL.id] ?: 0
+                val interval = (130L - (turboLvl * 18L)).coerceAtLeast(40L)
 
-            while (_autoSellConfig.value.isAutoRolling) {
-                if (_balance.value < rollCost) {
-                    showNotification("Автокрутка: закончились средства")
-                    stopAutoRoll()
-                    break
-                }
+                while (_autoSellConfig.value.isAutoRolling) {
+                    if (_balance.value < rollCost) {
+                        showNotification("Автокрутка: закончились средства")
+                        break
+                    }
 
-                _balance.update { it - rollCost }
-                prefs.saveBalance(_balance.value)
+                    _balance.update { it - rollCost }
+                    prefs.saveBalance(_balance.value)
 
-                val mvdLvl = _upgrades.value[UpgradeType.MVD_INSIDER.id] ?: 0
-                val goldLvl = _upgrades.value[UpgradeType.GOLDEN_DATABASE.id] ?: 0
-                val generated = PhoneGenerator.generate(mvdLvl, goldLvl, _levelInfo.value.level)
+                    val mvdLvl = _upgrades.value[UpgradeType.MVD_INSIDER.id] ?: 0
+                    val goldLvl = _upgrades.value[UpgradeType.GOLDEN_DATABASE.id] ?: 0
+                    val generated = PhoneGenerator.generate(mvdLvl, goldLvl, _levelInfo.value.level)
 
-                _currentNumber.value = generated
-                prefs.saveCurrentNumber(generated)
+                    _currentNumber.value = generated
+                    prefs.saveCurrentNumber(generated)
 
-                recordStats(generated)
-                updateRollQuests(generated)
-                addExperienceForRoll(generated)
+                    recordStats(generated)
+                    updateRollQuests(generated)
+                    addExperienceForRoll(generated)
 
-                val isUltra = generated.rarity.isGovOrSecret || generated.rarity == RarityTier.DIAMOND
-                if (isUltra && _autoSellConfig.value.stopOnUltraRare) {
-                    _events.emit(GameEvent.Haptic(true))
-                    _events.emit(
-                        GameEvent.Alert(
-                            title = "🚨 РЕДКИЙ ПЕРЕХВАТ!",
-                            message = "Автокрутка остановлена!\nНомер: ${generated.formatted}\nОценка: ${formatMoney(generated.value)}"
+                    val isUltra = generated.rarity.isGovOrSecret || generated.rarity == RarityTier.DIAMOND
+                    if (isUltra && _autoSellConfig.value.stopOnUltraRare) {
+                        _events.emit(GameEvent.Haptic(true))
+                        _events.emit(
+                            GameEvent.Alert(
+                                title = "🚨 РЕДКИЙ ПЕРЕХВАТ!",
+                                message = "Автокрутка остановлена!\nНомер: ${generated.formatted}\nОценка: ${formatMoney(generated.value)}"
+                            )
                         )
-                    )
-                    saveCurrentToVault()
-                    stopAutoRoll()
-                    break
-                }
+                        val vaulted = saveCurrentToVault()
+                        if (!vaulted) {
+                            val currentList = _inventory.value.toMutableList()
+                            currentList.removeAll { it.id == generated.id }
+                            currentList.add(0, generated)
+                            trimInventoryToLimit(currentList)
+                            _inventory.value = currentList
+                            prefs.saveInventoryBackup(currentList)
+                            viewModelScope.launch {
+                                try {
+                                    simDao.insertSim(SavedSimEntity.fromDomain(generated))
+                                } catch (_: Exception) {}
+                            }
+                            showNotification("Сейф полон! Номер сохранён в инвентаре")
+                        }
+                        break
+                    }
 
-                val keepCondition = generated.rarity.ordinal >= _autoSellConfig.value.autoSellBelowRarity.ordinal &&
-                        generated.value >= _autoSellConfig.value.minKeepPrice
+                    val keepCondition = generated.rarity.ordinal >= _autoSellConfig.value.autoSellBelowRarity.ordinal &&
+                            generated.value >= _autoSellConfig.value.minKeepPrice
 
-                if (keepCondition) {
-                    val shouldVault = _autoSellConfig.value.autoSaveKeptToInventory && vaultCount < vaultCapacity
-                    val simToKeep = if (shouldVault) generated.copy(isInVault = true) else generated
-                    simDao.insertSim(SavedSimEntity.fromDomain(simToKeep))
-                    val updated = _inventory.value.toMutableList()
-                    if (!updated.any { it.id == simToKeep.id }) {
+                    if (keepCondition) {
+                        val shouldVault = _autoSellConfig.value.autoSaveKeptToInventory && vaultCount < vaultCapacity
+                        val simToKeep = if (shouldVault) generated.copy(isInVault = true) else generated
+                        val updated = _inventory.value.toMutableList()
+                        updated.removeAll { it.id == simToKeep.id }
                         updated.add(0, simToKeep)
+                        trimInventoryToLimit(updated)
                         _inventory.value = updated
                         prefs.saveInventoryBackup(updated)
-                    }
-                    if (shouldVault) {
-                        showNotification("Сохранен в сейф: ${generated.formatted}")
-                        updateQuestProgress("daily_vault_1", 1)
-                        updateQuestProgress("monthly_vault_8", vaultCount, isAbsolute = true)
+                        viewModelScope.launch {
+                            try {
+                                simDao.insertSim(SavedSimEntity.fromDomain(simToKeep))
+                            } catch (_: Exception) {}
+                        }
+                        if (shouldVault) {
+                            showNotification("Сохранен в сейф: ${generated.formatted}")
+                            updateQuestProgress("daily_vault_1", 1)
+                            updateQuestProgress("monthly_vault_8", vaultCount.toLong(), isAbsolute = true)
+                        } else {
+                            if (_autoSellConfig.value.autoSaveKeptToInventory && vaultCount >= vaultCapacity) {
+                                showNotification("Сейф полон! В инвентаре: ${generated.formatted}")
+                            } else {
+                                showNotification("В инвентаре: ${generated.formatted}")
+                            }
+                        }
                     } else {
-                        showNotification("В инвентаре: ${generated.formatted}")
+                        _balance.update { it + generated.value }
+                        prefs.saveBalance(_balance.value)
+                        _stats.update { it.copy(totalEarned = it.totalEarned + generated.value) }
+                        persistStats()
+                        updateQuestProgress("daily_earn_3k", generated.value)
                     }
-                } else {
-                    _balance.update { it + generated.value }
-                    prefs.saveBalance(_balance.value)
-                    _stats.update { it.copy(totalEarned = it.totalEarned + generated.value) }
-                    updateQuestProgress("daily_earn_3k", generated.value.toInt())
-                }
 
-                delay(interval)
+                    delay(interval)
+                }
+            } finally {
+                stopAutoRoll()
             }
         }
     }
 
-    private fun stopAutoRoll() {
+    fun stopAutoRoll() {
         _autoSellConfig.update { it.copy(isAutoRolling = false) }
         autoRollJob?.cancel()
         autoRollJob = null
@@ -540,6 +876,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         showNotification("${type.title} прокачан до ур. ${currLevel + 1}!")
         updateQuestProgress("weekly_upgrade_2", 1)
+        checkPassiveIncomeQuest()
 
         viewModelScope.launch {
             _events.emit(GameEvent.Haptic(false))
@@ -547,18 +884,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun claimQuestReward(questId: String) {
-        val quest = _quests.value.find { it.id == questId } ?: return
-        if (!quest.isCompleted || quest.isClaimed) return
-
+        var claimedQuest: Quest? = null
         _quests.update { list ->
-            list.map { if (it.id == questId) it.copy(isClaimed = true) else it }
+            list.map {
+                if (it.id == questId && it.isCompleted && !it.isClaimed) {
+                    claimedQuest = it
+                    it.copy(isClaimed = true)
+                } else it
+            }
         }
+        val quest = claimedQuest ?: return
         prefs.saveQuests(_quests.value)
 
         _balance.update { it + quest.rewardAmount }
         prefs.saveBalance(_balance.value)
         _stats.update { it.copy(totalEarned = it.totalEarned + quest.rewardAmount) }
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
+        persistStats()
 
         // Give XP bonus for quest completion!
         addExperienceForQuest(quest.rewardAmount)
@@ -610,12 +951,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun updateQuestProgress(questId: String, delta: Int, isAbsolute: Boolean = false) {
+    private fun updateQuestProgress(questId: String, delta: Long, isAbsolute: Boolean = false) {
         _quests.update { list ->
             list.map { q ->
                 if (q.id == questId && !q.isClaimed) {
-                    val newProg = if (isAbsolute) delta else (q.currentProgress + delta)
-                    q.copy(currentProgress = newProg.coerceAtMost(q.targetProgress))
+                    val target = q.targetProgress.toLong()
+                    val newProg = if (isAbsolute) {
+                        delta.coerceIn(0L, target)
+                    } else {
+                        (q.currentProgress.toLong() + delta.coerceAtLeast(0L)).coerceIn(0L, target)
+                    }
+                    q.copy(currentProgress = newProg.toInt())
                 } else {
                     q
                 }
@@ -635,23 +981,47 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 rarityCounts = newCounts
             )
         }
-        prefs.saveStats(_stats.value.totalRolls, _stats.value.totalEarned)
+        persistStats()
     }
 
     private fun loadQuestsWithSavedProgress(): List<Quest> {
         val initial = createInitialQuests()
         val saved = prefs.loadQuestsProgress()
-        if (saved.isEmpty()) return initial
+        val resetDates = prefs.loadLastResetDates()
 
-        return initial.map { q ->
-            val savedProgress = saved[q.id]
-            if (savedProgress != null) {
-                q.copy(
-                    currentProgress = savedProgress.first,
-                    isClaimed = savedProgress.second
-                )
-            } else q
+        val cal = java.util.Calendar.getInstance()
+        val currentDailyKey = String.format(java.util.Locale.US, "%04d-%02d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        val currentWeeklyKey = String.format(java.util.Locale.US, "%04d-W%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.WEEK_OF_YEAR))
+        val currentMonthlyKey = String.format(java.util.Locale.US, "%04d-M%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+
+        val shouldResetDaily = resetDates.lastDaily.isNotEmpty() && resetDates.lastDaily != currentDailyKey
+        val shouldResetWeekly = resetDates.lastWeekly.isNotEmpty() && resetDates.lastWeekly != currentWeeklyKey
+        val shouldResetMonthly = resetDates.lastMonthly.isNotEmpty() && resetDates.lastMonthly != currentMonthlyKey
+
+        // Persist current calendar reset dates
+        prefs.saveLastResetDates(currentDailyKey, currentWeeklyKey, currentMonthlyKey)
+
+        val quests = initial.map { q ->
+            val shouldResetThis = when (q.period) {
+                QuestPeriod.DAILY -> shouldResetDaily
+                QuestPeriod.WEEKLY -> shouldResetWeekly
+                QuestPeriod.MONTHLY -> shouldResetMonthly
+            }
+
+            if (shouldResetThis) {
+                q.copy(currentProgress = 0, isClaimed = false)
+            } else {
+                val savedProgress = saved[q.id]
+                if (savedProgress != null) {
+                    q.copy(
+                        currentProgress = savedProgress.first.coerceIn(0, q.targetProgress),
+                        isClaimed = savedProgress.second
+                    )
+                } else q
+            }
         }
+        prefs.saveQuests(quests)
+        return quests
     }
 
     fun showNotification(msg: String) {
@@ -674,6 +1044,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        const val MAX_INVENTORY_SIZE = 200
+
         fun formatMoney(amount: Long): String {
             val s = amount.toString()
             val reversed = s.reversed()

@@ -23,8 +23,8 @@ enum class RarityTier(
         badgeLabel = "БАЗОВЫЙ",
         primaryColor = TextMuted,
         borderColor = Color(0x33FFFFFF),
-        minPrice = 30,
-        maxPrice = 75,
+        minPrice = 40,
+        maxPrice = 300,
         prestigeStars = 0
     ),
     BRONZE(
@@ -32,8 +32,8 @@ enum class RarityTier(
         badgeLabel = "BRONZE VIP",
         primaryColor = Color(0xFFCD7F32),
         borderColor = Color(0xFF8C5523),
-        minPrice = 150,
-        maxPrice = 450,
+        minPrice = 350,
+        maxPrice = 2_800,
         prestigeStars = 1
     ),
     SILVER(
@@ -41,8 +41,8 @@ enum class RarityTier(
         badgeLabel = "SILVER VIP",
         primaryColor = PlatinumSilverStart,
         borderColor = Color(0xFF94A3B8),
-        minPrice = 700,
-        maxPrice = 2_500,
+        minPrice = 3_000,
+        maxPrice = 16_000,
         prestigeStars = 2
     ),
     GOLD(
@@ -50,8 +50,8 @@ enum class RarityTier(
         badgeLabel = "GOLD VIP",
         primaryColor = LiquidGoldMid,
         borderColor = LiquidGoldStart,
-        minPrice = 7_500,
-        maxPrice = 28_000,
+        minPrice = 18_000,
+        maxPrice = 95_000,
         prestigeStars = 3
     ),
     PLATINUM(
@@ -59,8 +59,8 @@ enum class RarityTier(
         badgeLabel = "PLATINUM",
         primaryColor = Color(0xFF38BDF8),
         borderColor = Color(0xFF7DD3FC),
-        minPrice = 50_000,
-        maxPrice = 180_000,
+        minPrice = 100_000,
+        maxPrice = 480_000,
         prestigeStars = 4
     ),
     DIAMOND(
@@ -68,8 +68,8 @@ enum class RarityTier(
         badgeLabel = "DIAMOND ELITE",
         primaryColor = DiamondCyanStart,
         borderColor = Color(0xFF00E5FF),
-        minPrice = 350_000,
-        maxPrice = 1_200_000,
+        minPrice = 500_000,
+        maxPrice = 2_500_000,
         prestigeStars = 5
     ),
     POLICE_MVD(
@@ -77,8 +77,8 @@ enum class RarityTier(
         badgeLabel = "СПЕЦСВЯЗЬ МВД",
         primaryColor = PoliceBlueStart,
         borderColor = PoliceRedEnd,
-        minPrice = 250_000,
-        maxPrice = 900_000,
+        minPrice = 1_500_000,
+        maxPrice = 8_500_000,
         prestigeStars = 5
     ),
     FSB_KREMLIN(
@@ -86,8 +86,8 @@ enum class RarityTier(
         badgeLabel = "ВЕРТУШКА АТС-1",
         primaryColor = Color(0xFFF43F5E),
         borderColor = LiquidGoldStart,
-        minPrice = 1_000_000,
-        maxPrice = 3_500_000,
+        minPrice = 10_000_000,
+        maxPrice = 55_000_000,
         prestigeStars = 6
     );
 
