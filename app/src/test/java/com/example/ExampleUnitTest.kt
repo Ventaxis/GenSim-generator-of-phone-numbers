@@ -56,7 +56,7 @@ class ExampleUnitTest {
 
   @Test
   fun testUpgradePricingCalculation() {
-    val upgrade = UpgradeType.PASSIVE_INCOME
+    val upgrade = UpgradeType.INVENTORY_CAPACITY
     val level0Price = upgrade.getPrice(0)
     val level1Price = upgrade.getPrice(1)
     assertEquals(upgrade.basePrice, level0Price)
@@ -121,7 +121,7 @@ class ExampleUnitTest {
     val level2 = PlayerProgression.getLevelInfo(500L)
     assertTrue("Should reach level 2 with 500 XP", level2.level >= 2)
     assertTrue("Should have bonus slots", level2.bonusVaultSlots > 0)
-    assertTrue("Should have passive income bonus", level2.passiveIncomeBonusPercent > 0)
+    assertTrue("Should have sell price bonus", level2.sellPriceBonusPercent > 0)
 
     val roadmap = PlayerProgression.getRoadmap(2)
     assertEquals(20, roadmap.size)

@@ -2,9 +2,6 @@ package com.example.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,18 +10,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.SimCard
-import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,33 +28,452 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PhoneNumber
 import com.example.model.RarityTier
-import com.example.ui.theme.DiamondCyanStart
-import com.example.ui.theme.EmeraldProfit
-import com.example.ui.theme.LiquidGoldMid
-import com.example.ui.theme.LiquidGoldStart
-import com.example.ui.theme.PlatinumSilverStart
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.GlassBorder
+import com.example.ui.theme.PrimaryActionBlue
+import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
-import com.example.viewmodel.GameViewModel
-import kotlinx.coroutines.launch
 
+/**
+ * Флаг страны (поддержка России, Беларуси, Казахстана, Украины, ОАЭ, США, Германии)
+ */
+@Composable
+fun CountryFlag(
+    countryIso: String,
+    modifier: Modifier = Modifier
+) {
+    val boxModifier = modifier
+        .size(width = 16.dp, height = 11.dp)
+        .clip(RoundedCornerShape(2.dp))
+        .border(0.5.dp, Color(0x55FFFFFF), RoundedCornerShape(2.dp))
+
+    when (countryIso.uppercase()) {
+        "UA" -> {
+            // Украина (сине-жёлтый)
+            Box(modifier = boxModifier) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF0057B7)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFFFDD00)))
+                }
+            }
+        }
+        "BY" -> {
+            // Беларусь (красно-зелёный)
+            Box(modifier = boxModifier) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(2f).fillMaxWidth().background(Color(0xFFC8102E)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF007A3D)))
+                }
+            }
+        }
+        "KZ" -> {
+            // Казахстан (бирюзово-голубой с золотым солнцем)
+            Box(
+                modifier = boxModifier.background(Color(0xFF00AFCA)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFEC50C))
+                )
+            }
+        }
+        "AE" -> {
+            // ОАЭ (красная полоса слева, зелёная, белая, чёрная горизонтально)
+            Box(modifier = boxModifier) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.width(4.5.dp).fillMaxHeight().background(Color(0xFFFF0000)))
+                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF00732F)))
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.White))
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF000000)))
+                    }
+                }
+            }
+        }
+        "US" -> {
+            // США (красно-белые полосы с синим кантоном)
+            Box(modifier = boxModifier) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFB22234)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.White))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFB22234)))
+                }
+                Box(
+                    modifier = Modifier
+                        .size(width = 6.dp, height = 5.dp)
+                        .background(Color(0xFF3C3B6E))
+                )
+            }
+        }
+        "DE" -> {
+            // Германия (чёрный, красный, золотой)
+            Box(modifier = boxModifier) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF000000)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFFF0000)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFFFCC00)))
+                }
+            }
+        }
+        else -> {
+            // Россия (триколор: белый, синий, красный)
+            Box(modifier = boxModifier) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color.White))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF1D6BF3)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFE11D48)))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RussianFlag(modifier: Modifier = Modifier) {
+    CountryFlag(countryIso = "RU", modifier = modifier)
+}
+
+/**
+ * Фирменный логотип мобильного оператора
+ */
+@Composable
+fun OperatorLogo(
+    operatorName: String,
+    isMini: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val size = if (isMini) 16.dp else 22.dp
+
+    when {
+        // Спецсвязь / Кремль / СБУ / КГБ / Белый дом: золотой герб / звезда
+        operatorName.contains("Кремль", ignoreCase = true) ||
+        operatorName.contains("АТС", ignoreCase = true) ||
+        operatorName.contains("МВД", ignoreCase = true) ||
+        operatorName.contains("ФСБ", ignoreCase = true) ||
+        operatorName.contains("ФСО", ignoreCase = true) ||
+        operatorName.contains("СБУ", ignoreCase = true) ||
+        operatorName.contains("КГБ", ignoreCase = true) ||
+        operatorName.contains("Акорда", ignoreCase = true) ||
+        operatorName.contains("White House", ignoreCase = true) ||
+        operatorName.contains("Pentagon", ignoreCase = true) ||
+        operatorName.contains("FBI", ignoreCase = true) ||
+        operatorName.contains("Police", ignoreCase = true) ||
+        operatorName.contains("Royal", ignoreCase = true) ||
+        operatorName.contains("Bundestag", ignoreCase = true) ||
+        operatorName.contains("Kanzler", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFBE123C)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "★",
+                    fontSize = if (isMini) 10.sp else 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFBBF24)
+                )
+            }
+        }
+        // Kyivstar: Синий квадрат с жёлтой звездой
+        operatorName.contains("Kyivstar", ignoreCase = true) ||
+        operatorName.contains("Киевстар", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF0077FF)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "★",
+                    fontSize = if (isMini) 9.sp else 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFFFD700)
+                )
+            }
+        }
+        // Vodafone: Красный круг с белой каплей/точкой
+        operatorName.contains("Vodafone", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE60000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(if (isMini) 6.dp else 8.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+            }
+        }
+        // A1 Беларусь: красный квадрат с "A1"
+        operatorName.contains("A1", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFE2001A)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "A1",
+                    fontSize = if (isMini) 8.sp else 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+        // Kcell: фиолетовый круг с буквой K
+        operatorName.contains("Kcell", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFF6A1B9A)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "K",
+                    fontSize = if (isMini) 9.sp else 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+        // AT&T: синий круг с глобусом
+        operatorName.contains("AT&T", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00A8E0)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "at&t",
+                    fontSize = if (isMini) 6.sp else 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+        // Verizon: чёрный квадрат с красной галочкой
+        operatorName.contains("Verizon", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "V",
+                    fontSize = if (isMini) 9.sp else 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFCD040B)
+                )
+            }
+        }
+        // Telekom DE: маджента с буквой T
+        operatorName.contains("Telekom", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFE20074)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "T",
+                    fontSize = if (isMini) 9.sp else 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+        // e& / du / UAE:
+        operatorName.contains("e&", ignoreCase = true) || operatorName.contains("du", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE11438)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "e&",
+                    fontSize = if (isMini) 7.sp else 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+        // Билайн / Belime: полосатый жёлто-чёрный круг
+        operatorName.contains("Билайн", ignoreCase = true) ||
+        operatorName.contains("Belime", ignoreCase = true) ||
+        operatorName.contains("Bee", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFFFBBF24))
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFFBBF24)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF18181B)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFFFBBF24)))
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF18181B)))
+                }
+            }
+        }
+        // МТС: красный квадрат со скруглёнными углами
+        operatorName.contains("МТС", ignoreCase = true) ||
+        operatorName.contains("MTS", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFE11D48)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "M",
+                    fontSize = if (isMini) 9.sp else 12.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+        // МегаФон: зелёный круг с фиолетовой точкой
+        operatorName.contains("Мега", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFF10B981)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(if (isMini) 6.dp else 8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF7C3AED))
+                )
+            }
+        }
+        // Tele2 / T2: тёмный квадрат с белой надписью
+        operatorName.contains("Tele2", ignoreCase = true) ||
+        operatorName.contains("Теле2", ignoreCase = true) ||
+        operatorName.contains("T2", ignoreCase = true) -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFF0F172A))
+                    .border(0.5.dp, Color(0xFF334155), RoundedCornerShape(3.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "T2",
+                    fontSize = if (isMini) 8.sp else 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+        // Yota или другие: бирюзовый круг
+        else -> {
+            Box(
+                modifier = modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(Color(0xFF06B6D4)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Y",
+                    fontSize = if (isMini) 9.sp else 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SimMicrochip(modifier: Modifier = Modifier, isMini: Boolean = false) {
+    val chipWidth = if (isMini) 22.dp else 30.dp
+    val chipHeight = if (isMini) 16.dp else 22.dp
+    Box(
+        modifier = modifier
+            .size(width = chipWidth, height = chipHeight)
+            .clip(RoundedCornerShape(3.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFE5A93C),
+                        Color(0xFFC48821),
+                        Color(0xFFFCD34D)
+                    )
+                )
+            )
+            .border(0.8.dp, Color(0xFF8D6214), RoundedCornerShape(3.dp))
+            .padding(1.5.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.6.dp)
+                    .background(Color(0xFF78510D))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(0.6.dp)
+                    .background(Color(0xFF78510D))
+            )
+        }
+    }
+}
+
+/**
+ * Тёмная матовая карточка SIM-карты в едином стиле интерфейса
+ */
 @Composable
 fun SimCardView(
     phoneNumber: PhoneNumber?,
     modifier: Modifier = Modifier,
-    isMini: Boolean = false
+    isMini: Boolean = false,
+    isAutoRolling: Boolean = false
 ) {
     if (phoneNumber == null) {
         EmptySimCardView(modifier = modifier)
@@ -67,378 +482,300 @@ fun SimCardView(
 
     val rarity = phoneNumber.rarity
 
-    // Dynamic drop animation states
-    val auraIntensity = remember { Animatable(0f) }
-    val sweepAnim = remember { Animatable(0f) }
-    val badgeScale = remember { Animatable(1f) }
-    val numberScale = remember { Animatable(1f) }
-    val priceScale = remember { Animatable(1f) }
-
+    // Быстрый визуальный отклик на ручной тап
+    val cardScale = remember { Animatable(1f) }
     LaunchedEffect(phoneNumber.id) {
-        if (!isMini) {
-            auraIntensity.snapTo(0.65f)
-            badgeScale.snapTo(1.25f)
-            numberScale.snapTo(0.93f)
-            priceScale.snapTo(1.18f)
-            sweepAnim.snapTo(0f)
-
-            launch {
-                auraIntensity.animateTo(
-                    0.18f,
-                    animationSpec = tween(550, easing = LinearOutSlowInEasing)
-                )
-            }
-            launch {
-                badgeScale.animateTo(
-                    1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
-            }
-            launch {
-                numberScale.animateTo(
-                    1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
-            }
-            launch {
-                priceScale.animateTo(
-                    1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                )
-            }
-            launch {
-                sweepAnim.animateTo(
-                    1f,
-                    animationSpec = tween(400, easing = FastOutSlowInEasing)
-                )
-            }
+        if (!isMini && !isAutoRolling) {
+            cardScale.snapTo(0.97f)
+            cardScale.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 70, easing = FastOutSlowInEasing)
+            )
         }
     }
-
-    // Clean matte dark titanium gradient (minimalist, modern, no cheap gaudiness)
-    val cardBackground = Brush.linearGradient(
-        colors = when (rarity) {
-            RarityTier.COMMON -> listOf(Color(0xF2121722), Color(0xF20B0F16))
-            RarityTier.BRONZE -> listOf(Color(0xF2181412), Color(0xF20F0C0A))
-            RarityTier.SILVER -> listOf(Color(0xF2151B26), Color(0xF20E131C))
-            RarityTier.GOLD -> listOf(Color(0xF51C170E), Color(0xF5100D06))
-            RarityTier.PLATINUM -> listOf(Color(0xF2131C28), Color(0xF20B111A))
-            RarityTier.DIAMOND -> listOf(Color(0xF2091F28), Color(0xF2041219))
-            RarityTier.POLICE_MVD -> listOf(Color(0xF20C1733), Color(0xF2140A12))
-            RarityTier.FSB_KREMLIN -> listOf(Color(0xF2200A10), Color(0xF2160C06))
-        }
-    )
-
-    val cardShape = RoundedCornerShape(if (isMini) 14.dp else 16.dp)
-    val cardBorder = Brush.linearGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.18f),
-            rarity.borderColor.copy(alpha = if (rarity.isRareOrAbove) 0.55f else 0.35f),
-            Color.White.copy(alpha = 0.05f)
-        )
-    )
 
     val sizingModifier = if (isMini) {
         modifier.fillMaxWidth()
     } else {
         modifier
-            .widthIn(max = 360.dp)
+            .widthIn(max = 350.dp)
             .fillMaxWidth()
     }
 
+    // Разбор цифр номера: +7 [prefix] [first3]-[mid2]-[last2]
+    val prefix = phoneNumber.prefix
+    val digits = phoneNumber.digits
+    val first3 = if (digits.length >= 3) digits.substring(0, 3) else digits
+    val mid2 = if (digits.length >= 5) digits.substring(3, 5) else ""
+    val last2 = if (digits.length >= 7) digits.substring(5, 7) else ""
+
+    // Проверка совпадения паттернов для синего подчёркивания
+    val underlinePrefixAndFirst = prefix.length == 3 && first3.length == 3 && prefix == first3
+    val underlineMidAndLast = mid2.isNotEmpty() && mid2 == last2
+    val underlineFirst3Identical = first3.length == 3 && first3[0] == first3[1] && first3[1] == first3[2]
+    val underlinePrefixIdentical = prefix.length == 3 && prefix[0] == prefix[1] && prefix[1] == prefix[2]
+
+    val displayOperatorName = when {
+        phoneNumber.operatorName.contains("Билайн", ignoreCase = true) -> "Belime"
+        else -> phoneNumber.operatorName
+    }
+
+    // Индекс редкости (например, "1 из 22")
+    val rarityPoolCount = when (rarity) {
+        RarityTier.COMMON -> 10
+        RarityTier.BRONZE -> 16
+        RarityTier.SILVER -> 22
+        RarityTier.GOLD -> 35
+        RarityTier.PLATINUM -> 50
+        RarityTier.DIAMOND -> 77
+        RarityTier.POLICE_MVD -> 15
+        RarityTier.FSB_KREMLIN -> 7
+    }
+
+    val cardBorderColor = if (rarity.ordinal >= RarityTier.GOLD.ordinal) {
+        rarity.borderColor.copy(alpha = 0.55f)
+    } else {
+        GlassBorder
+    }
+
+    // Тёмная карточка SIM-карты с чётким отображением номера
     Box(
         modifier = sizingModifier
             .testTag("sim_card_${phoneNumber.id}")
-            .drawBehind {
-                if (!isMini && auraIntensity.value > 0f) {
-                    val glowRadius = size.maxDimension * 0.75f
-                    val glowColor = rarity.primaryColor.copy(alpha = auraIntensity.value * if (rarity.isRareOrAbove) 0.75f else 0.35f)
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                glowColor,
-                                rarity.borderColor.copy(alpha = auraIntensity.value * 0.3f),
-                                Color.Transparent
-                            ),
-                            center = center,
-                            radius = glowRadius
-                        )
+            .scale(if (!isAutoRolling) cardScale.value else 1f)
+            .clip(RoundedCornerShape(if (isMini) 12.dp else 16.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        DarkSurface,
+                        Color(0xFF11141C)
                     )
-                }
-            }
-            .clip(cardShape)
-            .background(cardBackground)
-            .border(1.dp, cardBorder, cardShape)
-            .padding(if (isMini) 10.dp else 13.dp)
+                )
+            )
+            .border(
+                width = 1.2.dp,
+                color = cardBorderColor,
+                shape = RoundedCornerShape(if (isMini) 12.dp else 16.dp)
+            )
+            .padding(
+                horizontal = if (isMini) 10.dp else 16.dp,
+                vertical = if (isMini) 8.dp else 14.dp
+            )
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(if (isMini) 6.dp else 9.dp)
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. Header Row: Operator on left + Minimal Rarity pill on right
+            // 1. Верхняя строка: Логотип оператора + "Россия" слева, Золотой микрочип справа
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (rarity.isGovOrSecret) Icons.Default.Security else Icons.Default.SimCard,
-                        contentDescription = null,
-                        tint = if (rarity.isGovOrSecret) rarity.primaryColor else Color(0xFF64748B),
-                        modifier = Modifier.size(if (isMini) 12.dp else 15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = phoneNumber.operatorName.uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = if (isMini) 10.sp else 11.sp,
-                        color = if (rarity.isGovOrSecret) rarity.primaryColor else Color(0xFF94A3B8),
-                        letterSpacing = 0.8.sp,
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                // Слева: Логотип оператора, имя и мини-флаг России
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (isMini) 5.dp else 8.dp)
+                    ) {
+                        OperatorLogo(operatorName = displayOperatorName, isMini = isMini)
+                        Text(
+                            text = displayOperatorName,
+                            fontSize = if (isMini) 13.sp else 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(if (isMini) 2.dp else 3.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (isMini) 4.dp else 6.dp)
+                    ) {
+                        CountryFlag(
+                            countryIso = phoneNumber.countryIso,
+                            modifier = Modifier.size(if (isMini) 12.dp else 16.dp, if (isMini) 8.dp else 11.dp)
+                        )
+                        Text(
+                            text = phoneNumber.countryName,
+                            fontSize = if (isMini) 9.5.sp else 11.5.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = TextSecondary,
+                            maxLines = 1
+                        )
+                    }
                 }
 
-                // Minimalist rarity badge with spring pop
-                Box(modifier = Modifier.scale(badgeScale.value)) {
-                    MinimalRarityBadge(rarity = rarity, isMini = isMini)
-                }
+                // Справа: Золотой чип SIM-карты с вырубкой
+                SimMicrochip(isMini = isMini)
             }
 
-            // 2. Frosted Liquid Glass Number Box (Clean, premium liquid glass reflection)
-            val glassBoxShape = RoundedCornerShape(if (isMini) 8.dp else 11.dp)
-            val liquidGlassGradient = Brush.verticalGradient(
-                colors = listOf(
-                    Color(0xB3101726),
-                    Color(0xE6080D16)
+            Spacer(modifier = Modifier.height(if (isMini) 8.dp else 14.dp))
+
+            // 2. Номер телефона: яркий, белый, чётко виден, всегда строго в 1 строку!
+            val formattedNumber = phoneNumber.formatted
+            val isEliteRepeated = formattedNumber.contains("999 999") ||
+                                 formattedNumber.contains("888 888") ||
+                                 formattedNumber.contains("777 777") ||
+                                 formattedNumber.contains("8888") ||
+                                 formattedNumber.contains("9999") ||
+                                 formattedNumber.contains("7777")
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = formattedNumber,
+                    fontSize = if (isMini) {
+                        13.sp
+                    } else if (formattedNumber.length > 21) {
+                        17.5.sp
+                    } else if (formattedNumber.length > 18) {
+                        19.5.sp
+                    } else {
+                        22.5.sp
+                    },
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Default,
+                    color = Color.White,
+                    letterSpacing = 0.4.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
-            )
-            val liquidGlassBorder = Brush.linearGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.28f),
-                    rarity.primaryColor.copy(alpha = 0.35f),
-                    Color.White.copy(alpha = 0.06f)
-                ),
-                start = Offset(0f, 0f),
-                end = Offset(300f, 150f)
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .scale(numberScale.value)
-                    .clip(glassBoxShape)
-                    .background(liquidGlassGradient)
-                    .drawBehind {
-                        // Liquid Glass Sheen reflection line along the top half
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.08f),
-                                    Color.Transparent
-                                ),
-                                startY = 0f,
-                                endY = size.height * 0.45f
-                            )
-                        )
-
-                        // Smooth light sweep animation on drop
-                        if (!isMini && sweepAnim.value > 0f && sweepAnim.value < 1f) {
-                            val sweepX = (size.width + 200f) * sweepAnim.value - 100f
-                            drawRect(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        rarity.primaryColor.copy(alpha = 0.35f),
-                                        Color.White.copy(alpha = 0.65f),
-                                        rarity.primaryColor.copy(alpha = 0.35f),
-                                        Color.Transparent
-                                    ),
-                                    start = Offset(sweepX - 70f, 0f),
-                                    end = Offset(sweepX + 70f, size.height)
+                if (!isMini && isEliteRepeated) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .height(2.dp)
+                            .fillMaxWidth(0.5f)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(PrimaryActionBlue, Color(0xFF60A5FA), Color.Transparent)
                                 )
                             )
-                        }
-                    }
-                    .border(0.9.dp, liquidGlassBorder, glassBoxShape)
-                    .padding(vertical = if (isMini) 6.dp else 10.dp, horizontal = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = phoneNumber.formatted,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Black,
-                    fontSize = if (isMini) 13.sp else 16.5.sp,
-                    letterSpacing = 0.4.sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    color = when (rarity) {
-                        RarityTier.FSB_KREMLIN -> LiquidGoldStart
-                        RarityTier.POLICE_MVD -> Color(0xFF93C5FD)
-                        RarityTier.DIAMOND -> DiamondCyanStart
-                        RarityTier.GOLD -> LiquidGoldMid
-                        RarityTier.PLATINUM -> PlatinumSilverStart
-                        else -> Color(0xFFF8FAFC)
-                    }
-                )
+                    )
+                }
             }
 
-            // 3. Ultra-Clean Footer Row: Category on left, Price with Multiplier on right
+            Spacer(modifier = Modifier.height(if (isMini) 6.dp else 10.dp))
+
+            // 3. Нижняя строка: Категория слева + Редкость справа (строго в 1 строку)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Category description
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                Text(
+                    text = phoneNumber.categoryDescription,
+                    fontSize = if (isMini) 9.sp else 11.sp,
+                    color = TextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    if (rarity.isRareOrAbove && !isMini) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = rarity.primaryColor,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    Text(
-                        text = phoneNumber.categoryDescription,
-                        fontSize = if (isMini) 10.sp else 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF94A3B8),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                    if (rarity.prestigeStars > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "★".repeat(rarity.prestigeStars),
-                            fontSize = 10.sp,
-                            color = rarity.primaryColor
-                        )
-                    }
-                }
+                )
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(6.dp))
 
-                // Price (with subtle multiplier pill if > 1.0 and scale pop)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.scale(priceScale.value)
-                ) {
-                    if (phoneNumber.totalMultiplier > 1.0) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(Color(0x24FFB800))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "×${if (phoneNumber.totalMultiplier % 1.0 == 0.0) phoneNumber.totalMultiplier.toInt() else String.format("%.1f", phoneNumber.totalMultiplier)}",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = LiquidGoldStart
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(5.dp))
-                    }
-                    Text(
-                        text = GameViewModel.formatMoney(phoneNumber.value),
-                        fontWeight = FontWeight.Black,
-                        fontSize = if (isMini) 12.sp else 15.sp,
-                        color = EmeraldProfit
-                    )
-                }
+                Text(
+                    text = "${rarity.title}, 1 из $rarityPoolCount",
+                    fontSize = if (isMini) 9.5.sp else 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = rarity.primaryColor,
+                    maxLines = 1
+                )
             }
         }
     }
 }
 
+/**
+ * Пустая заготовка карты до первого ролла — в едином тёмном стиле
+ */
 @Composable
 fun EmptySimCardView(modifier: Modifier = Modifier) {
-    val cardShape = RoundedCornerShape(16.dp)
-
     Box(
         modifier = modifier
-            .widthIn(max = 330.dp)
-            .fillMaxWidth(0.88f)
-            .clip(cardShape)
-            .background(Color(0xD90E1420))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), cardShape)
-            .padding(vertical = 22.dp, horizontal = 16.dp),
-        contentAlignment = Alignment.Center
+            .widthIn(max = 350.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        DarkSurface,
+                        Color(0xFF11141C)
+                    )
+                )
+            )
+            .border(1.2.dp, GlassBorder, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = Icons.Default.TouchApp,
-                contentDescription = null,
-                tint = LiquidGoldStart,
-                modifier = Modifier.size(26.dp)
-            )
-            Text(
-                text = "Нажмите для генерации",
-                color = Color(0xFFE2E8F0),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Ищите редкие серии, красивые цифры и спецномера",
-                color = TextSecondary,
-                fontSize = 10.sp,
-                textAlign = TextAlign.Center
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OperatorLogo(operatorName = "Belime")
+                        Text(
+                            text = "Belime",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        RussianFlag()
+                        Text(
+                            text = "Россия",
+                            fontSize = 11.5.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+                SimMicrochip()
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Чётко видимый заполнитель номера на тёмном фоне
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "+7 (999) •••-••-••",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White.copy(alpha = 0.9f),
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                Text(
+                    text = "Нажмите «Выпустить ещё»",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PrimaryActionBlue
+                )
+            }
         }
-    }
-}
-
-@Composable
-fun MinimalRarityBadge(rarity: RarityTier, isMini: Boolean) {
-    val badgeBgGradient = when (rarity) {
-        RarityTier.COMMON -> Brush.linearGradient(listOf(Color(0x33334155), Color(0x331E293B)))
-        RarityTier.BRONZE -> Brush.linearGradient(listOf(Color(0x44CD7F32), Color(0x448C5523)))
-        RarityTier.SILVER -> Brush.linearGradient(listOf(Color(0x4494A3B8), Color(0x44475569)))
-        RarityTier.GOLD -> Brush.linearGradient(listOf(Color(0x44FFB800), Color(0x44B37400)))
-        RarityTier.PLATINUM -> Brush.linearGradient(listOf(Color(0x4438BDF8), Color(0x440284C7)))
-        RarityTier.DIAMOND -> Brush.linearGradient(listOf(Color(0x5500E5FF), Color(0x5500B4D8)))
-        RarityTier.POLICE_MVD -> Brush.linearGradient(listOf(Color(0x552563EB), Color(0x551D4ED8)))
-        RarityTier.FSB_KREMLIN -> Brush.linearGradient(listOf(Color(0x55DC2626), Color(0x55991B1B)))
-    }
-
-    val badgeShape = RoundedCornerShape(5.dp)
-
-    Box(
-        modifier = Modifier
-            .clip(badgeShape)
-            .background(badgeBgGradient)
-            .border(0.7.dp, rarity.borderColor.copy(alpha = 0.5f), badgeShape)
-            .padding(horizontal = if (isMini) 5.dp else 7.dp, vertical = if (isMini) 1.dp else 2.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = rarity.badgeLabel,
-            fontSize = if (isMini) 8.sp else 9.sp,
-            fontWeight = FontWeight.Black,
-            color = rarity.primaryColor,
-            letterSpacing = 0.4.sp,
-            maxLines = 1,
-            softWrap = false
-        )
     }
 }

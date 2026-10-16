@@ -18,12 +18,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -41,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.UpgradeType
+import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.EmeraldProfit
 import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.LiquidGoldMid
@@ -87,18 +93,27 @@ fun UpgradesTab(
             val canAfford = balance >= price && !isMax
 
             val icon: ImageVector = when (upgrade) {
-                UpgradeType.PASSIVE_INCOME -> Icons.Default.CellTower
+                UpgradeType.INVENTORY_CAPACITY -> Icons.Default.Inventory
                 UpgradeType.MVD_INSIDER -> Icons.Default.Security
                 UpgradeType.GOLDEN_DATABASE -> Icons.Default.Star
                 UpgradeType.TURBO_ROLL -> Icons.Default.Bolt
                 UpgradeType.VAULT_EXPANSION -> Icons.Default.Inventory
+                UpgradeType.ELITE_BROKER -> Icons.Default.AttachMoney
+                UpgradeType.QUANTUM_SCANNER -> Icons.Default.AutoAwesome
+                UpgradeType.SATELLITE_ORBIT -> Icons.Default.TrendingUp
+                UpgradeType.OPERATOR_CARTEL -> Icons.Default.AccountBalance
+                UpgradeType.PRESIDENTIAL_HOTLINE -> Icons.Default.MilitaryTech
+                UpgradeType.NEURAL_CLUSTER -> Icons.Default.Bolt
+                UpgradeType.OFFSHORE_SYNDICATE -> Icons.Default.TrendingUp
+                UpgradeType.OLIGARCH_MONOPOLY -> Icons.Default.Star
+                UpgradeType.KREMLIN_VERTUSHKA -> Icons.Default.MilitaryTech
             }
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(
                         1.2.dp,
                         if (upgrade == UpgradeType.MVD_INSIDER && currLevel > 0) PoliceBlueStart.copy(alpha = 0.6f)

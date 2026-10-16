@@ -9,35 +9,33 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
 private val DarkColorScheme = darkColorScheme(
-    primary = GoldAccent,
-    onPrimary = Color.Black,
-    primaryContainer = Color(0xFF382900),
-    onPrimaryContainer = GoldLight,
-    secondary = DiamondCyan,
-    onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF00363D),
-    onSecondaryContainer = Color(0xFF97F0FF),
-    tertiary = PoliceBlue,
-    onTertiary = Color.White,
+    primary = PrimaryActionBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF13284D),
+    onPrimaryContainer = Color(0xFFBFDBFE),
+    secondary = RoyalBlueLight,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFF1E2638),
+    onSecondaryContainer = Color(0xFFDBEAFE),
+    tertiary = LiquidGoldMid,
+    onTertiary = Color.Black,
     background = DarkBg,
     onBackground = TextPrimary,
     surface = DarkSurface,
     onSurface = TextPrimary,
     surfaceVariant = DarkSurfaceElevated,
     onSurfaceVariant = TextSecondary,
-    outline = DarkCardBorder,
+    outline = GlassBorder,
     error = PoliceRed,
     onError = Color.White
 )
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = true, // Default to sleek dark mode
+    darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    // Clamp system fontScale to max 1.0f to prevent UI layout explosions,
-    // wrapping of phone numbers, and three-letter line breaks on devices with large display scale.
     val currentDensity = LocalDensity.current
     val clampedDensity = Density(
         density = currentDensity.density,

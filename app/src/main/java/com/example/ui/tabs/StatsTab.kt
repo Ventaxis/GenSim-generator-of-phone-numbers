@@ -42,6 +42,7 @@ import com.example.ui.theme.EmeraldProfit
 import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.LiquidGoldMid
 import com.example.ui.theme.LiquidGoldStart
+import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.PoliceBlueStart
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -51,8 +52,7 @@ import com.example.viewmodel.GameViewModel
 @Composable
 fun StatsTab(
     stats: GameStats,
-    levelInfo: PlayerLevelInfo,
-    onOpenDiagnostics: (() -> Unit)? = null
+    levelInfo: PlayerLevelInfo
 ) {
     LazyColumn(
         modifier = Modifier
@@ -73,62 +73,6 @@ fun StatsTab(
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
-            }
-        }
-
-        if (onOpenDiagnostics != null) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0x22F59E0B))
-                        .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                        .clickable { onOpenDiagnostics() }
-                        .padding(12.dp)
-                        .testTag("open_diagnostic_log_btn")
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Storage,
-                                contentDescription = null,
-                                tint = Color(0xFFF59E0B),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
-                                Text(
-                                    text = "ДИАГНОСТИКА ROOM DB",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFF59E0B),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                                Text(
-                                    text = "Контроль персистентности: bestNumber и rarityCounts",
-                                    fontSize = 10.sp,
-                                    color = TextSecondary,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                        Text(
-                            text = "ОТКРЫТЬ →",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color(0xFFF59E0B),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
             }
         }
 
@@ -233,48 +177,107 @@ fun StatsTab(
                         }
                     }
 
-                    // Active perks breakdown
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Active perks breakdown - full-width key-value rows, immune to word wrapping
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x331E293B))
+                            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0x331E293B))
-                                .padding(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text("СЕЙФ", fontSize = 9.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                                Text("+${levelInfo.bonusVaultSlots} слотов", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Storage,
+                                    contentDescription = null,
+                                    tint = LiquidGoldMid,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Вместимость сейфа",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
+                            Text(
+                                text = "+${levelInfo.bonusVaultSlots} слотов",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0x331E293B))
-                                .padding(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text("ПАССИВКА", fontSize = 9.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                                Text("+${levelInfo.passiveIncomeBonusPercent}%", fontSize = 12.sp, color = EmeraldProfit, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.MilitaryTech,
+                                    contentDescription = null,
+                                    tint = EmeraldProfit,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Бонус к продаже",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
+                            Text(
+                                text = "+${levelInfo.sellPriceBonusPercent}%",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = EmeraldProfit,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0x331E293B))
-                                .padding(8.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text("ПРЕМИЯ", fontSize = 9.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                                Text("+${GameViewModel.formatMoney(levelInfo.nextLevelBonusCash)}", fontSize = 11.sp, color = LiquidGoldStart, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.BarChart,
+                                    contentDescription = null,
+                                    tint = LiquidGoldStart,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Премия за след. ранг",
+                                    fontSize = 11.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
+                            Text(
+                                text = "+${GameViewModel.formatMoney(levelInfo.nextLevelBonusCash)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = LiquidGoldStart,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
@@ -291,7 +294,7 @@ fun StatsTab(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xD9121722))
+                        .background(DarkSurface)
                         .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
                         .padding(16.dp)
                 ) {
@@ -312,7 +315,7 @@ fun StatsTab(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xD9121722))
+                        .background(DarkSurface)
                         .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
                         .padding(16.dp)
                 ) {
@@ -336,7 +339,7 @@ fun StatsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(1.2.dp, LiquidGoldMid.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
                     .padding(18.dp)
             ) {
@@ -418,7 +421,7 @@ fun StatsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(1.dp, GlassBorder, RoundedCornerShape(24.dp))
                     .padding(18.dp)
             ) {
@@ -472,7 +475,7 @@ fun StatsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(1.dp, PoliceBlueStart.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
                     .padding(18.dp)
             ) {

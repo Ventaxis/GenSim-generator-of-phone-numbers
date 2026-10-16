@@ -86,7 +86,7 @@ class GamePreferences(private val context: Context) {
         prefs.edit().putLong("key_balance", balance).apply()
     }
 
-    fun loadBalance(defaultVal: Long = 2_500L): Long {
+    fun loadBalance(defaultVal: Long = 10_000L): Long {
         return getSafeLong(listOf("key_balance", "balance", "user_balance", "money"), defaultVal)
     }
 
@@ -151,6 +151,14 @@ class GamePreferences(private val context: Context) {
         }
 
         return SavedStatsData(rolls, earned, bestNumber, counts)
+    }
+
+    fun saveLuckPity(rolls: Int) {
+        prefs.edit().putInt("key_luck_pity_rolls", rolls).apply()
+    }
+
+    fun loadLuckPity(fallback: Int = 0): Int {
+        return prefs.getInt("key_luck_pity_rolls", fallback)
     }
 
     fun saveLastResetDates(dailyDate: String, weeklyDate: String, monthlyDate: String) {
@@ -342,5 +350,38 @@ class GamePreferences(private val context: Context) {
             autoSaveKeptToInventory = saveKept,
             stopOnUltraRare = stopUltra
         )
+    }
+
+    companion object {
+        const val DEFAULT_GITHUB_REPO = "Ventaxis/GenSim-generator-of-phone-numbers"
+    }
+
+    fun getGitHubRepo(): String {
+        val saved = prefs.getString("key_github_repo", DEFAULT_GITHUB_REPO) ?: DEFAULT_GITHUB_REPO
+        if (saved.isBlank() || saved.contains("dorpi912") || saved.contains("sim-card-tycoon")) {
+            setGitHubRepo(DEFAULT_GITHUB_REPO)
+            return DEFAULT_GITHUB_REPO
+        }
+        return DEFAULT_GITHUB_REPO
+    }
+
+    fun setGitHubRepo(repo: String) {
+        prefs.edit().putString("key_github_repo", DEFAULT_GITHUB_REPO).apply()
+    }
+
+    fun getDismissedUpdateVersion(): String {
+        return prefs.getString("key_dismissed_update_version", "") ?: ""
+    }
+
+    fun setDismissedUpdateVersion(version: String) {
+        prefs.edit().putString("key_dismissed_update_version", version).apply()
+    }
+
+    fun saveSelectedCountry(iso: String) {
+        prefs.edit().putString("key_selected_country_iso", iso).apply()
+    }
+
+    fun loadSelectedCountry(): String {
+        return prefs.getString("key_selected_country_iso", "AUTO") ?: "AUTO"
     }
 }

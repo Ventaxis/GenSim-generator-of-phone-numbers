@@ -48,9 +48,21 @@ data class SavedSimEntity(
             }
         }
 
+        val (resolvedCountryName, resolvedCountryIso) = when {
+            countryCode == "+380" || formatted.startsWith("+380") -> Pair("Украина", "UA")
+            countryCode == "+375" || formatted.startsWith("+375") -> Pair("Беларусь", "BY")
+            countryCode == "+971" || formatted.startsWith("+971") -> Pair("ОАЭ", "AE")
+            countryCode == "+1" || formatted.startsWith("+1") -> Pair("США", "US")
+            countryCode == "+49" || formatted.startsWith("+49") -> Pair("Германия", "DE")
+            operatorName.contains("Kcell") || prefix.startsWith("70") -> Pair("Казахстан", "KZ")
+            else -> Pair("Россия", "RU")
+        }
+
         return PhoneNumber(
             id = id,
             countryCode = countryCode,
+            countryName = resolvedCountryName,
+            countryIso = resolvedCountryIso,
             prefix = prefix,
             digits = digits,
             formatted = formatted,

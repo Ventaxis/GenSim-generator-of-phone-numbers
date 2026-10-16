@@ -177,54 +177,76 @@ fun LevelPerksDialog(
                                 )
                             }
 
-                            // Active perks pills
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            // Active perks breakdown
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0x331E293B))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0x331E293B))
-                                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "+${levelInfo.bonusVaultSlots} к сейфу",
-                                        fontSize = 10.sp,
+                                        text = "Вместимость сейфа:",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Text(
+                                        text = "+${levelInfo.bonusVaultSlots} слотов",
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0x331E293B))
-                                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "+${levelInfo.passiveIncomeBonusPercent}% пассивка",
-                                        fontSize = 10.sp,
+                                        text = "Бонус к продаже номеров:",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Text(
+                                        text = "+${levelInfo.sellPriceBonusPercent}%",
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = EmeraldProfit
+                                        color = EmeraldProfit,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0x331E293B))
-                                        .padding(vertical = 6.dp, horizontal = 4.dp),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "+${String.format("%.1f", levelInfo.luckBonusPercent)}% удача",
-                                        fontSize = 10.sp,
+                                        text = "Бонус к удаче круток:",
+                                        fontSize = 11.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Text(
+                                        text = "+${String.format(java.util.Locale.US, "%.1f", levelInfo.luckBonusPercent)}%",
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = LiquidGoldMid
+                                        color = LiquidGoldMid,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -237,7 +259,9 @@ fun LevelPerksDialog(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black,
                         color = TextSecondary,
-                        letterSpacing = 1.sp
+                        letterSpacing = 1.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -266,7 +290,10 @@ fun LevelPerksDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Box(
                                             modifier = Modifier
                                                 .size(28.dp)
@@ -286,13 +313,16 @@ fun LevelPerksDialog(
 
                                         Spacer(modifier = Modifier.width(10.dp))
 
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Text(
                                                     text = "Ур. ${item.level}: ${item.title}",
-                                                    fontSize = 13.sp,
+                                                    fontSize = 12.sp,
                                                     fontWeight = FontWeight.Black,
-                                                    color = if (isCurrent) LiquidGoldStart else if (item.isUnlocked) TextPrimary else TextSecondary
+                                                    color = if (isCurrent) LiquidGoldStart else if (item.isUnlocked) TextPrimary else TextSecondary,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                 )
                                                 if (isCurrent) {
                                                     Spacer(modifier = Modifier.width(6.dp))
@@ -302,23 +332,36 @@ fun LevelPerksDialog(
                                                             .background(LiquidGoldMid)
                                                             .padding(horizontal = 4.dp, vertical = 1.dp)
                                                     ) {
-                                                        Text("ВЫ ЗДЕСЬ", fontSize = 8.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                                                        Text(
+                                                            text = "ВЫ ЗДЕСЬ",
+                                                            fontSize = 8.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = Color.Black,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
                                                     }
                                                 }
                                             }
                                             Text(
-                                                text = "+${item.bonusVaultSlots} слотов • +${item.passiveIncomeBonusPercent}% пассив • +${GameViewModel.formatMoney(item.cashReward)}",
+                                                text = "+${item.bonusVaultSlots} слотов • +${item.sellPriceBonusPercent}% к продаже • +${GameViewModel.formatMoney(item.cashReward)}",
                                                 fontSize = 10.sp,
-                                                color = if (item.isUnlocked) EmeraldProfit else TextSecondary
+                                                color = if (item.isUnlocked) EmeraldProfit else TextSecondary,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                             )
                                         }
                                     }
 
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "${item.requiredXp} XP",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (item.isUnlocked) LiquidGoldMid else TextSecondary
+                                        color = if (item.isUnlocked) LiquidGoldMid else TextSecondary,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }

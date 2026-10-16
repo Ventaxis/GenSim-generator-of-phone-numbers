@@ -153,13 +153,13 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `test inventory 200 items limit enforcement`() {
+  fun `test inventory limit enforcement`() {
     val app = ApplicationProvider.getApplicationContext<Application>()
     val prefs = com.example.data.GamePreferences(app)
 
     // Pre-populate inventory backup beyond limit
     val list = mutableListOf<PhoneNumber>()
-    for (i in 0 until 205) {
+    for (i in 0 until 120) {
       list.add(
         PhoneNumber(
           id = "test_item_$i",
@@ -177,13 +177,13 @@ class ExampleRobolectricTest {
     prefs.saveInventoryBackup(list)
 
     val vm = GameViewModel(app)
-    assertEquals(205, vm.inventory.value.size)
+    assertEquals(120, vm.inventory.value.size)
 
     // Now roll single which triggers trimInventoryToLimit
     vm.rollSingle()
     assertTrue(
-      "Inventory size must be <= 200 (was ${vm.inventory.value.size})",
-      vm.inventory.value.size <= 200
+      "Non-vault items must be <= inventoryCapacity (was ${vm.inventory.value.count { !it.isInVault }})",
+      vm.inventory.value.count { !it.isInVault } <= vm.inventoryCapacity
     )
     assertTrue("Protected vaulted item must not be trimmed", vm.inventory.value.any { it.isInVault })
   }

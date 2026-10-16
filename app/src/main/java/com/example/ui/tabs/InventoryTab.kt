@@ -25,40 +25,40 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sell
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,28 +66,40 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PhoneNumber
 import com.example.model.RarityTier
+import com.example.ui.components.NumberDetailDialog
+import com.example.ui.components.OperatorLogo
+import com.example.ui.components.SegmentedRarityBar
+import com.example.ui.theme.DarkBg
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.EmeraldProfit
 import com.example.ui.theme.GlassBorder
-import com.example.ui.theme.LiquidGoldMid
-import com.example.ui.theme.LiquidGoldStart
+import com.example.ui.theme.PrimaryActionBlue
+import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.viewmodel.GameViewModel
+import kotlinx.coroutines.launch
+
+enum class StorageSection(val label: String) {
+    INVENTORY("Коллекция"),
+    VAULT("Сейф")
+}
 
 enum class InventorySort(val label: String) {
-    PRICE("По цене"),
-    DATE("По давности"),
-    RARITY("По редкости")
+    PRICE("Цена"),
+    DATE("Дата"),
+    RARITY("Редкость")
 }
 
 enum class InventoryFilter(val label: String) {
     ALL("Все"),
-    VAULT("В сейфе"),
     COMMON("Обычные"),
-    BRONZE("Бронза"),
-    SILVER("Серебро"),
-    GOLD("Золото"),
+    BRONZE("Необычные"),
+    SILVER("Редкие"),
+    GOLD("Эпические"),
     PLATINUM("Платина"),
-    GOV("Элита/Госсвязь")
+    GOV("Госсвязь/VIP")
 }
 
 @Composable
@@ -96,140 +108,185 @@ fun InventoryTab(
     activeSim: PhoneNumber?,
     vaultCount: Int,
     vaultCapacity: Int,
+    inventoryCapacity: Int = 100,
+    balance: Long = 0L,
+    initialVaultSection: Boolean = false,
+    getEffectiveSellPrice: (PhoneNumber) -> Long = { it.value },
     onSetActiveSim: (PhoneNumber) -> Unit,
     onToggleVault: (PhoneNumber) -> Unit,
     onSellSim: (PhoneNumber) -> Unit,
-    onSellAllCommon: () -> Unit
+    onSellAllCommon: () -> Unit,
+    onSellAllInventory: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var storageSection by remember(initialVaultSection) {
+        mutableStateOf(if (initialVaultSection) StorageSection.VAULT else StorageSection.INVENTORY)
+    }
+    LaunchedEffect(initialVaultSection) {
+        storageSection = if (initialVaultSection) StorageSection.VAULT else StorageSection.INVENTORY
+    }
     var currentSort by remember { mutableStateOf(InventorySort.DATE) }
     var sortDescending by remember { mutableStateOf(true) }
     var currentFilter by remember { mutableStateOf(InventoryFilter.ALL) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedNumberForDetail by remember { mutableStateOf<PhoneNumber?>(null) }
+
+    val listState = rememberLazyListState()
+
+    // Base list strictly separated: Vault numbers do not appear in Inventory!
+    val poolList = remember(inventory, storageSection) {
+        if (storageSection == StorageSection.INVENTORY) {
+            inventory.filter { !it.isInVault }
+        } else {
+            inventory.filter { it.isInVault }
+        }
+    }
 
     // Filter logic
-    val filteredList = remember(inventory, currentFilter) {
+    val filteredList = remember(poolList, currentFilter) {
         when (currentFilter) {
-            InventoryFilter.ALL -> inventory
-            InventoryFilter.VAULT -> inventory.filter { it.isInVault }
-            InventoryFilter.COMMON -> inventory.filter { it.rarity == RarityTier.COMMON }
-            InventoryFilter.BRONZE -> inventory.filter { it.rarity == RarityTier.BRONZE }
-            InventoryFilter.SILVER -> inventory.filter { it.rarity == RarityTier.SILVER }
-            InventoryFilter.GOLD -> inventory.filter { it.rarity == RarityTier.GOLD }
-            InventoryFilter.PLATINUM -> inventory.filter { it.rarity == RarityTier.PLATINUM }
-            InventoryFilter.GOV -> inventory.filter { it.rarity.isGovOrSecret || it.rarity == RarityTier.DIAMOND }
+            InventoryFilter.ALL -> poolList
+            InventoryFilter.COMMON -> poolList.filter { it.rarity == RarityTier.COMMON }
+            InventoryFilter.BRONZE -> poolList.filter { it.rarity == RarityTier.BRONZE }
+            InventoryFilter.SILVER -> poolList.filter { it.rarity == RarityTier.SILVER }
+            InventoryFilter.GOLD -> poolList.filter { it.rarity == RarityTier.GOLD }
+            InventoryFilter.PLATINUM -> poolList.filter { it.rarity == RarityTier.PLATINUM }
+            InventoryFilter.GOV -> poolList.filter { it.rarity.isGovOrSecret || it.rarity == RarityTier.DIAMOND }
         }
     }
 
     // Sort logic: by price, by date/recency, by rarity
-    val sortedList = remember(filteredList, currentSort, sortDescending) {
+    val sortedList = remember(filteredList, currentSort, sortDescending, searchQuery) {
         val comparator = when (currentSort) {
             InventorySort.PRICE -> compareBy<PhoneNumber> { it.value }
             InventorySort.DATE -> compareBy<PhoneNumber> { it.timestamp }
             InventorySort.RARITY -> compareBy<PhoneNumber> { it.rarity.ordinal }
         }
-        if (sortDescending) {
+        val sorted = if (sortDescending) {
             filteredList.sortedWith(comparator.reversed())
         } else {
             filteredList.sortedWith(comparator)
         }
+
+        if (searchQuery.isBlank()) {
+            sorted
+        } else {
+            val q = searchQuery.trim().lowercase()
+            sorted.filter {
+                it.formatted.lowercase().contains(q) ||
+                it.digits.contains(q) ||
+                it.prefix.contains(q) ||
+                it.categoryDescription.lowercase().contains(q) ||
+                it.operatorName.lowercase().contains(q)
+            }
+        }
+    }
+
+    LaunchedEffect(currentSort, sortDescending, currentFilter, storageSection, searchQuery) {
+        listState.scrollToItem(0)
     }
 
     val unsavedCommonCount = remember(inventory, activeSim) {
         inventory.count { it.rarity == RarityTier.COMMON && !it.isInVault && it.id != activeSim?.id }
     }
-    val unsavedCommonValue = remember(inventory, activeSim) {
-        inventory.filter { it.rarity == RarityTier.COMMON && !it.isInVault && it.id != activeSim?.id }.sumOf { it.value }
+    val nonVaultCount = remember(inventory) { inventory.count { !it.isInVault } }
+
+    val totalSectionValue = remember(poolList) {
+        poolList.sumOf { getEffectiveSellPrice(it) }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .background(DarkBg)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 1. Compact Summary & Stats Bar
-        Surface(
-            color = Color(0xD9101724),
-            shape = RoundedCornerShape(12.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder),
-            modifier = Modifier.fillMaxWidth()
+        // 1. Шапка и переключатель (Коллекция / Сейф) + 3-строчная сводка справа
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // Переключатель вкладок
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurface)
+                    .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Tab: Коллекция
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (storageSection == StorageSection.INVENTORY) PrimaryActionBlue else Color.Transparent)
+                        .clickable {
+                            storageSection = StorageSection.INVENTORY
+                            coroutineScope.launch { listState.scrollToItem(0) }
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .testTag("storage_tab_inventory"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Всего: ${inventory.size}",
-                        fontSize = 12.sp,
+                        text = "Коллекция",
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        softWrap = false
+                        color = if (storageSection == StorageSection.INVENTORY) Color.White else TextSecondary
                     )
-                    Text(
-                        text = "•",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = LiquidGoldMid,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "Сейф: $vaultCount / $vaultCapacity",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (vaultCount >= vaultCapacity) Color(0xFFF87171) else LiquidGoldStart,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
                 }
 
-                if (unsavedCommonCount > 0) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x33EF4444))
-                            .border(1.dp, Color(0x66EF4444), RoundedCornerShape(8.dp))
-                            .clickable { onSellAllCommon() }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .testTag("sell_all_common_btn")
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = null,
-                                tint = Color(0xFFFCA5A5),
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Слить обычные ($unsavedCommonCount)",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFCA5A5),
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                // Tab: Сейф
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (storageSection == StorageSection.VAULT) PrimaryActionBlue else Color.Transparent)
+                        .clickable {
+                            storageSection = StorageSection.VAULT
+                            coroutineScope.launch { listState.scrollToItem(0) }
                         }
-                    }
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .testTag("storage_tab_vault"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Сейф",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (storageSection == StorageSection.VAULT) Color.White else TextSecondary
+                    )
                 }
+            }
+
+            // Сводка справа (3 компактные строки с выравниванием по правому краю)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = GameViewModel.formatMoney(balance),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = if (storageSection == StorageSection.INVENTORY) {
+                        "$nonVaultCount / $inventoryCapacity"
+                    } else {
+                        "$vaultCount / $vaultCapacity"
+                    },
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "Стоимость: ${GameViewModel.formatMoney(totalSectionValue)} ₽",
+                    fontSize = 11.sp,
+                    color = TextMuted
+                )
             }
         }
 
-        // 2. Sorting Control Row (Horizontal Scrollable with single-line labels)
+        // 2. Панель сортировки (Компактные кнопки-капсулы height 34.dp)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -237,25 +294,17 @@ fun InventoryTab(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Сортировка:",
-                fontSize = 11.sp,
-                color = TextSecondary,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                softWrap = false
-            )
-
             InventorySort.values().forEach { sort ->
                 val isSelected = currentSort == sort
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) LiquidGoldMid.copy(alpha = 0.2f) else Color(0x221E293B))
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) PrimaryActionBlue else Color(0xFF1A1E29))
                         .border(
                             1.dp,
-                            if (isSelected) LiquidGoldMid else Color.White.copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
+                            if (isSelected) PrimaryActionBlue else Color(0xFF282E3D),
+                            RoundedCornerShape(10.dp)
                         )
                         .clickable {
                             if (isSelected) {
@@ -264,79 +313,119 @@ fun InventoryTab(
                                 currentSort = sort
                                 sortDescending = true
                             }
+                            coroutineScope.launch { listState.scrollToItem(0) }
                         }
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
-                        .testTag("sort_${sort.name.lowercase()}_btn")
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = sort.label,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) LiquidGoldStart else TextSecondary,
-                            maxLines = 1,
-                            softWrap = false
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else TextSecondary
                         )
-                        if (isSelected) {
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Icon(
-                                imageVector = if (sortDescending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                                contentDescription = null,
-                                tint = LiquidGoldStart,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (isSelected && !sortDescending) "▲" else "▼",
+                            fontSize = 10.sp,
+                            color = if (isSelected) Color.White else TextMuted
+                        )
                     }
                 }
             }
-        }
 
-        // 3. Category Filter Chips (Horizontal Scroll with single-line chips)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Чипсы фильтрации
             InventoryFilter.values().forEach { filter ->
                 val isSelected = currentFilter == filter
-                val label = when (filter) {
-                    InventoryFilter.ALL -> "Все (${inventory.size})"
-                    InventoryFilter.VAULT -> "🔒 Сейф ($vaultCount)"
-                    InventoryFilter.COMMON -> "Обычные"
-                    InventoryFilter.BRONZE -> "Бронза"
-                    InventoryFilter.SILVER -> "Серебро"
-                    InventoryFilter.GOLD -> "Золото"
-                    InventoryFilter.PLATINUM -> "Платина"
-                    InventoryFilter.GOV -> "МВД/Гос"
-                }
-
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) LiquidGoldMid else Color(0x331E293B))
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) PrimaryActionBlue else Color(0xFF1A1E29))
                         .border(
                             1.dp,
-                            if (isSelected) LiquidGoldMid else Color.White.copy(alpha = 0.1f),
-                            RoundedCornerShape(12.dp)
+                            if (isSelected) PrimaryActionBlue else Color(0xFF282E3D),
+                            RoundedCornerShape(10.dp)
                         )
-                        .clickable { currentFilter = filter }
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                        .testTag("filter_${filter.name.lowercase()}_chip")
+                        .clickable {
+                            currentFilter = filter
+                            coroutineScope.launch { listState.scrollToItem(0) }
+                        }
+                        .padding(horizontal = 12.dp)
+                        .testTag("filter_${filter.name.lowercase()}_chip"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = label,
-                        fontSize = 11.sp,
+                        text = filter.label,
+                        fontSize = 11.5.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) Color(0xFF0F172A) else TextSecondary,
-                        maxLines = 1,
-                        softWrap = false
+                        color = if (isSelected) Color.White else TextSecondary
                     )
                 }
             }
         }
 
-        // 4. Numbers List
+        // 3. НОВОЕ ПОЛЕ ПОИСКА («Поиск номера»)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(DarkSurface)
+                .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(modifier = Modifier.weight(1f)) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Поиск номера (цифры, оператор, категория)...",
+                            fontSize = 12.sp,
+                            color = TextMuted
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        textStyle = TextStyle(
+                            color = Color.White,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        cursorBrush = SolidColor(PrimaryActionBlue),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (searchQuery.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Очистить",
+                        tint = TextSecondary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { searchQuery = "" }
+                    )
+                }
+            }
+        }
+
+        // 4. Список номеров
         if (sortedList.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -349,252 +438,79 @@ fun InventoryTab(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Archive,
+                        imageVector = if (storageSection == StorageSection.VAULT) Icons.Default.Lock else Icons.Default.Archive,
                         contentDescription = null,
                         tint = Color(0xFF475569),
                         modifier = Modifier.size(36.dp)
                     )
                     Text(
-                        text = if (inventory.isEmpty()) "Инвентарь пуст" else "Нет номеров по данному фильтру",
+                        text = if (searchQuery.isNotEmpty()) {
+                            "Ничего не найдено по запросу «$searchQuery»"
+                        } else if (storageSection == StorageSection.VAULT) {
+                            if (poolList.isEmpty()) "Сейф пуст. Положите сюда ценные номера!" else "Нет номеров в сейфе по данному фильтру"
+                        } else {
+                            if (poolList.isEmpty()) "Инвентарь пуст. Крутите барабан на главном экране!" else "Нет номеров по данному фильтру"
+                        },
                         color = TextSecondary,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp
-                    )
-                    Text(
-                        text = "Крутите барабан на главном экране!",
-                        color = Color(0xFF64748B),
-                        fontSize = 11.sp
+                        fontSize = 13.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(bottom = 12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 6.dp)
             ) {
-                items(sortedList, key = { it.id }) { item ->
+                items(sortedList, key = { "${storageSection.name}_${it.id}" }) { item ->
                     val isActive = activeSim?.id == item.id
+                    val effectivePrice = getEffectiveSellPrice(item)
                     InventoryNumberRow(
                         item = item,
                         isActive = isActive,
+                        effectiveSellPrice = effectivePrice,
+                        onCardClick = { selectedNumberForDetail = item },
                         onSetActiveSim = { onSetActiveSim(item) },
                         onToggleVault = { onToggleVault(item) },
-                        onSellSim = { onSellSim(item) },
-                        onCopy = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Phone Number", item.formatted))
-                            Toast.makeText(context, "Скопировано: ${item.formatted}", Toast.LENGTH_SHORT).show()
-                        }
+                        onSellSim = { onSellSim(item) }
                     )
                 }
             }
         }
-    }
-}
 
-@Composable
-fun InventoryNumberRow(
-    item: PhoneNumber,
-    isActive: Boolean,
-    onSetActiveSim: () -> Unit,
-    onToggleVault: () -> Unit,
-    onSellSim: () -> Unit,
-    onCopy: () -> Unit
-) {
-    val tierColor = when (item.rarity) {
-        RarityTier.COMMON -> Color(0xFF94A3B8)
-        RarityTier.BRONZE -> Color(0xFFCD7F32)
-        RarityTier.SILVER -> Color(0xFFCBD5E1)
-        RarityTier.GOLD -> LiquidGoldStart
-        RarityTier.PLATINUM -> Color(0xFF38BDF8)
-        RarityTier.DIAMOND -> Color(0xFFF472B6)
-        RarityTier.POLICE_MVD -> Color(0xFF60A5FA)
-        RarityTier.FSB_KREMLIN -> Color(0xFFF87171)
-    }
-
-    Surface(
-        color = Color(0xE6111827),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isActive) LiquidGoldMid else if (item.isInVault) LiquidGoldMid.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f)
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("inventory_item_${item.id}")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Row 1: Badges on left + Price on right
+        // 5. Нижняя панель массовых действий: Доступна ТОЛЬКО для инвентаря (в сейфе продавать нельзя!)
+        if (storageSection == StorageSection.INVENTORY && poolList.isNotEmpty()) {
+            val sellableCount = poolList.size
+            val commonCount = poolList.count { it.rarity == RarityTier.COMMON }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Badges
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    Text(
-                        text = item.operatorName,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(tierColor.copy(alpha = 0.18f))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = item.rarity.badgeLabel.uppercase(),
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Black,
-                            color = tierColor,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-
-                    if (item.isInVault) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(LiquidGoldMid.copy(alpha = 0.25f))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "🔒 СЕЙФ",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = LiquidGoldStart,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    if (isActive) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(EmeraldProfit.copy(alpha = 0.25f))
-                                .padding(horizontal = 5.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "В СЕТИ",
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = EmeraldProfit,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Price
-                Text(
-                    text = "+${formatPrice(item.value)} ₽",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    color = EmeraldProfit,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-
-            // Row 2: Prominent Phone Number + Category Subtitle + Copy icon (Full Width, never wraps into 3 rows)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onCopy() },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = item.formatted,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 15.sp,
-                        color = TextPrimary,
-                        letterSpacing = 0.5.sp,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = item.categoryDescription.ifBlank { "Базовый номер" },
-                            fontSize = 10.sp,
-                            color = Color(0xFF64748B),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        if (item.totalMultiplier > 1.0) {
-                            Text(
-                                text = "×${String.format(java.util.Locale.US, "%.1f", item.totalMultiplier)}",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = tierColor,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
-
-                Icon(
-                    imageVector = Icons.Default.ContentCopy,
-                    contentDescription = "Скопировать",
-                    tint = Color(0xFF475569),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            // Row 3: Action Buttons (Equip, Vault, Sell) distributed evenly, single-line text
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Button 1: Equip to Phone
+                // Кнопка 1: Продать всё из инвентаря
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isActive) EmeraldProfit.copy(alpha = 0.22f) else Color(0x331E293B))
+                        .weight(1.1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (sellableCount > 0) Color(0xFF881337).copy(alpha = 0.45f) else Color(0xFF1E2433))
                         .border(
                             1.dp,
-                            if (isActive) EmeraldProfit else Color.White.copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
+                            if (sellableCount > 0) Color(0xFFF43F5E).copy(alpha = 0.6f) else GlassBorder,
+                            RoundedCornerShape(12.dp)
                         )
-                        .clickable { onSetActiveSim() }
-                        .testTag("equip_sim_${item.id}"),
+                        .clickable {
+                            if (sellableCount > 0) {
+                                onSellAllInventory()
+                            } else {
+                                Toast.makeText(context, "В коллекции нет номеров для продажи", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .testTag("sell_all_inventory_btn"),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -602,20 +518,246 @@ fun InventoryNumberRow(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
+                            imageVector = Icons.Default.Sell,
+                            contentDescription = null,
+                            tint = if (sellableCount > 0) Color(0xFFF43F5E) else TextMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Продать всё ($sellableCount)",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (sellableCount > 0) Color(0xFFF43F5E) else TextMuted,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // Кнопка 2: Продать обычные (если есть)
+                if (commonCount > 0) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF181C26))
+                            .border(1.dp, Color(0xFF262C3A), RoundedCornerShape(12.dp))
+                            .clickable { onSellAllCommon() }
+                            .testTag("sell_all_common_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = null,
+                                tint = Color(0xFFF87171),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Обычные ($commonCount)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF87171),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        } else if (storageSection == StorageSection.VAULT && poolList.isNotEmpty()) {
+            // Подсказка для сейфа, что продать из сейфа нельзя
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF141824))
+                    .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = PrimaryActionBlue,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "В сейфе продать нельзя. Сначала переместите в инвентарь.",
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
+    }
+
+    // Detail Modal Dialog for chosen number
+    selectedNumberForDetail?.let { detailItem ->
+        NumberDetailDialog(
+            number = detailItem,
+            effectiveSellPrice = getEffectiveSellPrice(detailItem),
+            isActiveSim = activeSim?.id == detailItem.id,
+            canVault = vaultCount < vaultCapacity || detailItem.isInVault,
+            onDismiss = { selectedNumberForDetail = null },
+            onToggleVault = {
+                onToggleVault(detailItem)
+                selectedNumberForDetail = null
+            },
+            onSetActiveSim = {
+                onSetActiveSim(detailItem)
+                selectedNumberForDetail = null
+            },
+            onSell = {
+                onSellSim(detailItem)
+                selectedNumberForDetail = null
+            }
+        )
+    }
+}
+
+@Composable
+fun InventoryNumberRow(
+    item: PhoneNumber,
+    isActive: Boolean,
+    effectiveSellPrice: Long,
+    onCardClick: () -> Unit,
+    onSetActiveSim: () -> Unit,
+    onToggleVault: () -> Unit,
+    onSellSim: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val rarity = item.rarity
+
+    val cardBackground = Brush.horizontalGradient(
+        listOf(
+            Color(0xFF141720),
+            Color(0xFF141720),
+            rarity.primaryColor.copy(alpha = 0.22f)
+        )
+    )
+
+    Surface(
+        color = Color.Transparent,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isActive) PrimaryActionBlue else rarity.borderColor.copy(alpha = 0.35f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(cardBackground)
+            .clickable { onCardClick() }
+            .testTag("inventory_item_${item.id}")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Основной ряд: Слева компактная SIM-карта с номером и оператором, справа информация и цена
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Слева: Компактный бейдж SIM-карты с номером телефона и логотипом оператора
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkSurfaceElevated)
+                        .border(1.dp, GlassBorder, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OperatorLogo(operatorName = item.operatorName, isMini = true)
+                        Text(
+                            text = item.formatted,
+                            fontFamily = FontFamily.Default,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.5.sp,
+                            color = Color.White,
+                            letterSpacing = 0.3.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Справа: Колонка с Alignment.End
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "${item.operatorName} · ${item.categoryDescription}",
+                        fontSize = 10.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    SegmentedRarityBar(rarity = item.rarity)
+                    Text(
+                        text = "${formatPrice(effectiveSellPrice)} ₽",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            // Ряд аккуратных кнопок действий в сдержанном стиле
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Button 1: Equip
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isActive) PrimaryActionBlue.copy(alpha = 0.22f) else Color(0xFF181C26))
+                        .border(
+                            1.dp,
+                            if (isActive) PrimaryActionBlue else GlassBorder,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onSetActiveSim() }
+                        .testTag("equip_sim_${item.id}"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
                             imageVector = if (isActive) Icons.Default.Check else Icons.Default.PhoneAndroid,
-                            contentDescription = "В телефон",
-                            tint = if (isActive) EmeraldProfit else TextSecondary,
+                            contentDescription = null,
+                            tint = if (isActive) PrimaryActionBlue else TextSecondary,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (isActive) "В сети" else "В телефон",
-                            fontSize = 10.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isActive) EmeraldProfit else TextSecondary,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            color = if (isActive) PrimaryActionBlue else TextSecondary,
+                            maxLines = 1
                         )
                     }
                 }
@@ -626,35 +768,30 @@ fun InventoryNumberRow(
                         .weight(1f)
                         .height(32.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (item.isInVault) LiquidGoldMid.copy(alpha = 0.22f) else Color(0x331E293B))
+                        .background(if (item.isInVault) Color(0xFF1E283A) else Color(0xFF181C26))
                         .border(
                             1.dp,
-                            if (item.isInVault) LiquidGoldMid else Color.White.copy(alpha = 0.1f),
+                            if (item.isInVault) PrimaryActionBlue else GlassBorder,
                             RoundedCornerShape(8.dp)
                         )
                         .clickable { onToggleVault() }
                         .testTag("toggle_vault_${item.id}"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (item.isInVault) Icons.Default.Lock else Icons.Default.Archive,
-                            contentDescription = if (item.isInVault) "Из сейфа" else "В сейф",
-                            tint = if (item.isInVault) LiquidGoldStart else TextSecondary,
+                            contentDescription = null,
+                            tint = if (item.isInVault) PrimaryActionBlue else TextSecondary,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (item.isInVault) "Сейф" else "+Сейф",
-                            fontSize = 10.sp,
+                            text = if (item.isInVault) "Из сейфа" else "В сейф",
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (item.isInVault) LiquidGoldStart else TextSecondary,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            color = if (item.isInVault) PrimaryActionBlue else TextSecondary,
+                            maxLines = 1
                         )
                     }
                 }
@@ -665,35 +802,36 @@ fun InventoryNumberRow(
                         .weight(1f)
                         .height(32.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (item.isInVault) Color(0x1A64748B) else Color(0x3310B981))
+                        .background(if (item.isInVault) Color(0xFF13161F) else Color(0xFF181C26))
                         .border(
                             1.dp,
-                            if (item.isInVault) Color(0x3364748B) else Color(0x6610B981),
+                            if (item.isInVault) Color(0xFF222838) else GlassBorder,
                             RoundedCornerShape(8.dp)
                         )
-                        .clickable(enabled = !item.isInVault) { onSellSim() }
+                        .clickable {
+                            if (item.isInVault) {
+                                Toast.makeText(context, "В сейфе продать нельзя! Сначала нажмите «Из сейфа».", Toast.LENGTH_SHORT).show()
+                            } else {
+                                onSellSim()
+                            }
+                        }
                         .testTag("sell_sim_${item.id}"),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = if (item.isInVault) Icons.Default.Lock else Icons.Default.Sell,
-                            contentDescription = if (item.isInVault) "В сейфе" else "Продать",
-                            tint = if (item.isInVault) TextSecondary else EmeraldProfit,
+                            contentDescription = null,
+                            tint = if (item.isInVault) TextMuted else EmeraldProfit,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (item.isInVault) "В сейфе" else "Продать",
-                            fontSize = 10.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (item.isInVault) TextSecondary else EmeraldProfit,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis
+                            color = if (item.isInVault) TextMuted else EmeraldProfit,
+                            maxLines = 1
                         )
                     }
                 }

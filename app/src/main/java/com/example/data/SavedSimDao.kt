@@ -12,6 +12,9 @@ interface SavedSimDao {
     @Query("SELECT * FROM saved_sims ORDER BY timestamp DESC")
     fun getAllSavedSims(): Flow<List<SavedSimEntity>>
 
+    @Query("SELECT * FROM saved_sims ORDER BY timestamp DESC")
+    suspend fun getAllSavedSimsOnce(): List<SavedSimEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSim(sim: SavedSimEntity)
 
@@ -23,6 +26,9 @@ interface SavedSimDao {
 
     @Query("DELETE FROM saved_sims WHERE id = :id")
     suspend fun deleteSimById(id: String)
+
+    @Query("DELETE FROM saved_sims WHERE id IN (:ids)")
+    suspend fun deleteSimsByIds(ids: List<String>)
 
     @Query("DELETE FROM saved_sims")
     suspend fun clearAll()

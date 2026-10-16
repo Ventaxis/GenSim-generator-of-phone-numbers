@@ -22,8 +22,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Upgrade
@@ -49,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.Quest
 import com.example.model.QuestPeriod
+import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.EmeraldProfit
 import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.LiquidGoldEnd
@@ -62,7 +66,8 @@ import com.example.viewmodel.GameViewModel
 @Composable
 fun QuestsTab(
     quests: List<Quest>,
-    onClaimReward: (String) -> Unit
+    onClaimReward: (String) -> Unit,
+    onRefreshQuests: () -> Unit = {}
 ) {
     var selectedPeriod by remember { mutableStateOf(QuestPeriod.DAILY) }
 
@@ -81,14 +86,47 @@ fun QuestsTab(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ЗАДАНИЯ И НАГРАДЫ",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = LiquidGoldStart
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x331E293B))
+                            .border(1.dp, LiquidGoldMid.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .clickable { onRefreshQuests() }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .testTag("refresh_quests_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Обновить",
+                                tint = LiquidGoldStart,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Сменить",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LiquidGoldStart
+                            )
+                        }
+                    }
+                }
                 Text(
-                    text = "ЗАДАНИЯ И НАГРАДЫ",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = LiquidGoldStart
-                )
-                Text(
-                    text = "Выполняйте цели дня, недели и месяца, получайте крупные денежные премии и развивайте свою телеком-империю.",
+                    text = "Выполняйте цели дня, недели и сезона, забирайте премии и развивайте свою империю связи.",
                     fontSize = 12.sp,
                     color = TextSecondary,
                     lineHeight = 16.sp
@@ -168,7 +206,7 @@ fun QuestsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
                     .padding(16.dp)
             ) {
@@ -214,7 +252,7 @@ fun QuestsTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(22.dp))
-                    .background(Color(0xD9121722))
+                    .background(DarkSurface)
                     .border(
                         1.2.dp,
                         if (isClaimable) EmeraldProfit.copy(alpha = 0.8f) else GlassBorder,

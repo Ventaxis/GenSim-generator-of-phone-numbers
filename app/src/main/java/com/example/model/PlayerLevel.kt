@@ -8,7 +8,7 @@ data class PlayerLevelInfo(
     val progressFraction: Float,
     val totalXp: Long,
     val bonusVaultSlots: Int,
-    val passiveIncomeBonusPercent: Int,
+    val sellPriceBonusPercent: Int,
     val luckBonusPercent: Double,
     val nextLevelBonusCash: Long
 )
@@ -19,7 +19,7 @@ data class LevelPerkPreview(
     val requiredXp: Long,
     val cashReward: Long,
     val bonusVaultSlots: Int,
-    val passiveIncomeBonusPercent: Int,
+    val sellPriceBonusPercent: Int,
     val isUnlocked: Boolean
 )
 
@@ -80,7 +80,7 @@ object PlayerProgression {
         val fraction = (progress.toFloat() / needed.toFloat()).coerceIn(0f, 1f)
 
         val bonusSlots = (level - 1) * 2
-        val passiveBonusPercent = (level - 1) * 5
+        val sellBonus = (level - 1) * 4
         val luckBonus = (level - 1) * 0.2
         val nextCash = (level + 1) * 3_000L
 
@@ -92,7 +92,7 @@ object PlayerProgression {
             progressFraction = fraction,
             totalXp = totalXp,
             bonusVaultSlots = bonusSlots,
-            passiveIncomeBonusPercent = passiveBonusPercent,
+            sellPriceBonusPercent = sellBonus,
             luckBonusPercent = luckBonus,
             nextLevelBonusCash = nextCash
         )
@@ -135,7 +135,7 @@ object PlayerProgression {
             val xpReq = getXpThreshold(lvl)
             val cash = lvl * 3_000L
             val slots = (lvl - 1) * 2
-            val passive = (lvl - 1) * 5
+            val sellBonus = (lvl - 1) * 4
             list.add(
                 LevelPerkPreview(
                     level = lvl,
@@ -143,7 +143,7 @@ object PlayerProgression {
                     requiredXp = xpReq,
                     cashReward = cash,
                     bonusVaultSlots = slots,
-                    passiveIncomeBonusPercent = passive,
+                    sellPriceBonusPercent = sellBonus,
                     isUnlocked = lvl <= currentLevel
                 )
             )

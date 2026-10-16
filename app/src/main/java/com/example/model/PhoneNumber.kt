@@ -13,9 +13,11 @@ data class MultiplierDetail(
 data class PhoneNumber(
     val id: String = UUID.randomUUID().toString(),
     val countryCode: String = "+7",
-    val prefix: String, // e.g. "999", "495"
-    val digits: String, // 7 digits, e.g. "7777777"
-    val formatted: String, // e.g. "+7 (999) 777-77-77"
+    val countryName: String = "Россия",
+    val countryIso: String = "RU",
+    val prefix: String, // e.g. "999", "495", "50", "202"
+    val digits: String, // digits
+    val formatted: String, // e.g. "+7 (999) 777-77-77", "+380 (50) 888-88-88"
     val operatorName: String,
     val rarity: RarityTier,
     val categoryDescription: String,
@@ -30,6 +32,8 @@ data class PhoneNumber(
         val obj = JSONObject()
         obj.put("id", id)
         obj.put("countryCode", countryCode)
+        obj.put("countryName", countryName)
+        obj.put("countryIso", countryIso)
         obj.put("prefix", prefix)
         obj.put("digits", digits)
         obj.put("formatted", formatted)
@@ -191,9 +195,22 @@ data class PhoneNumber(
 
                 val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
 
+                val (resolvedCountryName, resolvedCountryIso) = when {
+                    obj.has("countryName") -> Pair(obj.optString("countryName", "Россия"), obj.optString("countryIso", "RU"))
+                    countryCode == "+380" || rawFormatted.startsWith("+380") -> Pair("Украина", "UA")
+                    countryCode == "+375" || rawFormatted.startsWith("+375") -> Pair("Беларусь", "BY")
+                    countryCode == "+971" || rawFormatted.startsWith("+971") -> Pair("ОАЭ", "AE")
+                    countryCode == "+1" || rawFormatted.startsWith("+1") -> Pair("США", "US")
+                    countryCode == "+49" || rawFormatted.startsWith("+49") -> Pair("Германия", "DE")
+                    operatorName.contains("Kcell") || rawPrefix.startsWith("70") -> Pair("Казахстан", "KZ")
+                    else -> Pair("Россия", "RU")
+                }
+
                 PhoneNumber(
                     id = id,
                     countryCode = countryCode,
+                    countryName = resolvedCountryName,
+                    countryIso = resolvedCountryIso,
                     prefix = rawPrefix,
                     digits = rawDigits,
                     formatted = rawFormatted,

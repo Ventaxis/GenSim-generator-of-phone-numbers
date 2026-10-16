@@ -161,28 +161,30 @@ fun TopHeaderBar(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 // Passive income rate
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF131F1C))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.TrendingUp,
-                        contentDescription = null,
-                        tint = EmeraldProfit,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "+$passiveIncome ₽/с",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = EmeraldProfit,
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                if (passiveIncome > 0) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF131F1C))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.TrendingUp,
+                            contentDescription = null,
+                            tint = EmeraldProfit,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "+$passiveIncome ₽/с",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldProfit,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }

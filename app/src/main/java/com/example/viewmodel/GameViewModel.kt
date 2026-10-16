@@ -9,6 +9,8 @@ import com.example.data.GameStatsEntity
 import com.example.data.SavedSimEntity
 import com.example.generator.PhoneGenerator
 import com.example.model.AutoSellConfig
+import com.example.model.AppUpdateInfo
+import com.example.model.UpdateState
 import com.example.model.PhoneNumber
 import com.example.model.PlayerLevelInfo
 import com.example.model.PlayerProgression
@@ -16,9 +18,11 @@ import com.example.model.Quest
 import com.example.model.QuestPeriod
 import com.example.model.RarityTier
 import com.example.model.UpgradeType
+import com.example.updater.OtaUpdateRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,14 +76,14 @@ data class RoomDiagnosticData(
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
-    val rollCost: Long = 50
+    val rollCost: Long = 1000L
 
     private val db = AppDatabase.getInstance(application)
     private val simDao = db.savedSimDao()
     private val gameStatsDao = db.gameStatsDao()
     private val prefs = GamePreferences(application)
 
-    private val _balance = MutableStateFlow(prefs.loadBalance(2_500L))
+    private val _balance = MutableStateFlow(prefs.loadBalance(10_000L))
     val balance: StateFlow<Long> = _balance.asStateFlow()
 
     private val _playerXp = MutableStateFlow(prefs.loadPlayerXp())
@@ -132,11 +136,42 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     )
     val stats: StateFlow<GameStats> = _stats.asStateFlow()
 
+    private val _luckPityRolls = MutableStateFlow(0)
+    val luckPityRolls: StateFlow<Int> = _luckPityRolls.asStateFlow()
+
+    private val _isLuckBoostActive = MutableStateFlow(false)
+    val isLuckBoostActive: StateFlow<Boolean> = _isLuckBoostActive.asStateFlow()
+
+    private val otaRepository = OtaUpdateRepository(application.applicationContext)
+
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    private val _githubRepo = MutableStateFlow(prefs.getGitHubRepo())
+    val githubRepo: StateFlow<String> = _githubRepo.asStateFlow()
+
+    private val _showUpdateDialog = MutableStateFlow(false)
+    val showUpdateDialog: StateFlow<Boolean> = _showUpdateDialog.asStateFlow()
+
     private val _quests = MutableStateFlow<List<Quest>>(loadQuestsWithSavedProgress())
     val quests: StateFlow<List<Quest>> = _quests.asStateFlow()
 
     private val _notification = MutableStateFlow<String?>(null)
     val notification: StateFlow<String?> = _notification.asStateFlow()
+
+    private val _selectedCountryIso = MutableStateFlow(prefs.loadSelectedCountry())
+    val selectedCountryIso: StateFlow<String> = _selectedCountryIso.asStateFlow()
+
+    fun selectCountry(iso: String) {
+        _selectedCountryIso.value = iso
+        prefs.saveSelectedCountry(iso)
+        val opt = PhoneGenerator.AVAILABLE_COUNTRIES.find { it.iso == iso }
+        val displayName = if (opt != null) "${opt.flag} ${opt.name}" else iso
+        showNotification("Регион генерации: $displayName")
+        viewModelScope.launch {
+            _events.emit(GameEvent.Haptic(true))
+        }
+    }
 
     private val _events = MutableSharedFlow<GameEvent>()
     val events: SharedFlow<GameEvent> = _events.asSharedFlow()
@@ -234,27 +269,62 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         get() {
             val level = _upgrades.value[UpgradeType.VAULT_EXPANSION.id] ?: 0
             val playerLevelBonus = _levelInfo.value.bonusVaultSlots
-            return 10 + (level * 4) + playerLevelBonus
+            return 10 + (level * 6) + playerLevelBonus
         }
 
-    val passiveIncomePerSec: Long
+    val inventoryCapacity: Int
         get() {
-            val incomeLevel = _upgrades.value[UpgradeType.PASSIVE_INCOME.id] ?: 0
-            val baseIncome = incomeLevel * 25L
-            val activeBonus = _activeSim.value?.let {
-                (it.value / 30_000L).coerceAtLeast(3L)
-            } ?: 0L
-            val levelMultiplier = 1.0 + (_levelInfo.value.passiveIncomeBonusPercent / 100.0)
-            return ((baseIncome + activeBonus) * levelMultiplier).toLong()
+            val lvl = _upgrades.value[UpgradeType.INVENTORY_CAPACITY.id] ?: 0
+            return when (lvl) {
+                0 -> 100
+                1 -> 250
+                2 -> 500
+                3 -> 800
+                4 -> 1_200
+                5 -> 1_800
+                6 -> 2_500
+                7 -> 3_500
+                8 -> 5_000
+                9 -> 7_000
+                else -> 10_000
+            }
         }
+
+    val inventoryCount: Int
+        get() = _inventory.value.count { !it.isInVault }
+
+    // Passive income neutralized as requested by user
+    val passiveIncomePerSec: Long = 0L
+
+    fun getEffectiveSellPrice(number: PhoneNumber): Long {
+        val brokerLvl = _upgrades.value[UpgradeType.ELITE_BROKER.id] ?: 0
+        val monopolyLvl = _upgrades.value[UpgradeType.OLIGARCH_MONOPOLY.id] ?: 0
+        val cartelLvl = _upgrades.value[UpgradeType.OPERATOR_CARTEL.id] ?: 0
+        val offshoreLvl = _upgrades.value[UpgradeType.OFFSHORE_SYNDICATE.id] ?: 0
+        val vertushkaLvl = _upgrades.value[UpgradeType.KREMLIN_VERTUSHKA.id] ?: 0
+        val levelBonus = _levelInfo.value.sellPriceBonusPercent / 100.0
+
+        var bonus = 1.0 + (brokerLvl * 0.15) + (monopolyLvl * 0.25) + (cartelLvl * 0.15) + levelBonus
+        if (number.rarity.isGovOrSecret) {
+            bonus += (offshoreLvl * 0.30)
+        }
+        if (vertushkaLvl > 0 && number.rarity.isRareOrAbove) {
+            bonus += (vertushkaLvl * 0.50)
+        }
+        return (number.value * bonus).toLong().coerceAtLeast(number.value)
+    }
 
     val unclaimedQuestsCount: Int
         get() = _quests.value.count { it.isCompleted && !it.isClaimed }
 
+    private var statsPersistJob: Job? = null
+
     private fun persistStats() {
-        val s = _stats.value
-        prefs.saveStats(s.totalRolls, s.totalEarned, s.bestNumber, s.rarityCounts)
-        viewModelScope.launch(Dispatchers.IO) {
+        statsPersistJob?.cancel()
+        statsPersistJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(350)
+            val s = _stats.value
+            prefs.saveStats(s.totalRolls, s.totalEarned, s.bestNumber, s.rarityCounts)
             try {
                 gameStatsDao.insertOrUpdate(
                     GameStatsEntity(
@@ -270,17 +340,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         lastUpdatedTimestamp = System.currentTimeMillis()
                     )
                 )
-                addDiagnosticLog("Room DB & Prefs: сохранено bestNumber=${s.bestNumber?.formatted ?: "null"}, rarityCounts=${s.rarityCounts.size} категорий")
                 refreshDiagnosticData()
-            } catch (e: Exception) {
-                addDiagnosticLog("Ошибка записи статистики в Room DB: ${e.message}")
-            }
+            } catch (_: Exception) {}
         }
     }
 
     private fun trimInventoryToLimit(list: MutableList<PhoneNumber>) {
+        val limit = inventoryCapacity
         val deletedIds = mutableListOf<String>()
-        while (list.size > MAX_INVENTORY_SIZE) {
+        while (list.count { !it.isInVault } > limit) {
             val candidateIndex = list.indexOfLast { !it.isInVault && it.id != _activeSim.value?.id }
             if (candidateIndex != -1) {
                 val removed = list.removeAt(candidateIndex)
@@ -290,9 +358,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         if (deletedIds.isNotEmpty()) {
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    deletedIds.forEach { simDao.deleteSimById(it) }
+                    simDao.deleteSimsByIds(deletedIds)
                 } catch (_: Exception) {}
             }
         }
@@ -303,58 +371,44 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Collect saved SIMs from Room Database and ensure bidirectional synchronization with preferences/backup
-        viewModelScope.launch {
-            simDao.getAllSavedSims().collect { entities ->
-                val backupSims = prefs.loadInventoryBackup()
+        // Load initial SIM inventory from Room once on startup without background flow thrashing
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entities = simDao.getAllSavedSimsOnce()
                 if (entities.isNotEmpty()) {
                     isRoomInitialized = true
                     val domainList = entities.map { it.toDomain() }
-                    _inventory.value = domainList
-                    prefs.saveInventoryBackup(domainList)
-
-                    // If active SIM is not set, pick the first saved number
-                    if (_activeSim.value == null) {
-                        val first = domainList.firstOrNull()
-                        if (first != null) {
-                            _activeSim.value = first
-                            prefs.saveActiveSim(first)
-                            checkPassiveIncomeQuest()
+                    withContext(Dispatchers.Main) {
+                        _inventory.value = domainList
+                        if (_activeSim.value == null) {
+                            val first = domainList.firstOrNull()
+                            if (first != null) {
+                                _activeSim.value = first
+                                prefs.saveActiveSim(first)
+                            }
                         }
                     }
-
-                    // Check if backup had any additional SIMs from older version not yet in Room
-                    val entityIds = domainList.map { it.id }.toSet()
-                    val missingFromRoom = backupSims.filter { it.id !in entityIds }
-                    if (missingFromRoom.isNotEmpty()) {
-                        missingFromRoom.forEach { missingSim ->
-                            try {
-                                simDao.insertSim(SavedSimEntity.fromDomain(missingSim))
-                            } catch (_: Exception) {}
+                } else {
+                    val backupSims = prefs.loadInventoryBackup()
+                    if (backupSims.isNotEmpty()) {
+                        isRoomInitialized = true
+                        withContext(Dispatchers.Main) {
+                            _inventory.value = backupSims
+                            if (_activeSim.value == null) {
+                                val first = backupSims.firstOrNull()
+                                if (first != null) {
+                                    _activeSim.value = first
+                                    prefs.saveActiveSim(first)
+                                    checkPassiveIncomeQuest()
+                                }
+                            }
                         }
-                    }
-                } else if (!isRoomInitialized && backupSims.isNotEmpty()) {
-                    // Populate Room from backup if Room was freshly created/cleared during migration
-                    isRoomInitialized = true
-                    _inventory.value = backupSims
-                    backupSims.forEach { sim ->
                         try {
-                            simDao.insertSim(SavedSimEntity.fromDomain(sim))
+                            simDao.insertAll(backupSims.map { SavedSimEntity.fromDomain(it) })
                         } catch (_: Exception) {}
                     }
-                    if (_activeSim.value == null) {
-                        val first = backupSims.firstOrNull()
-                        if (first != null) {
-                            _activeSim.value = first
-                            prefs.saveActiveSim(first)
-                            checkPassiveIncomeQuest()
-                        }
-                    }
-                } else if (isRoomInitialized) {
-                    _inventory.value = emptyList()
-                    prefs.saveInventoryBackup(emptyList())
                 }
-            }
+            } catch (_: Exception) {}
         }
 
         // Restore last generated number from preferences across app restarts
@@ -367,7 +421,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             prefs.saveCurrentNumber(initialNumber)
         }
 
-        addDiagnosticLog("Инициализация приложения: Room БД sim_tycoon.db подключена.")
+        val initialPity = prefs.loadLuckPity(fallback = (savedStats.totalRolls % 100).toInt())
+        _luckPityRolls.value = initialPity.coerceIn(0, 100)
+        _isLuckBoostActive.value = _luckPityRolls.value >= 100
+
+        addDiagnosticLog("Инициализация приложения: Room БД sim_tycoon.db подключена. Удача pity: ${_luckPityRolls.value}/100")
         addDiagnosticLog("Загрузка статистики: rolls=${savedStats.totalRolls}, earned=${savedStats.totalEarned}, bestNumber=${savedStats.bestNumber?.formatted ?: "null"}, rarityTiers=${savedStats.rarityCounts.size}")
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -448,37 +506,166 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        startPassiveIncomeLoop()
+        // Automatic background check for updates on startup
+        viewModelScope.launch {
+            delay(1500)
+            checkForUpdates(isManual = false)
+        }
     }
 
-    private fun startPassiveIncomeLoop() {
+    fun setGitHubRepo(repo: String) {
+        val trimmed = repo.trim()
+        _githubRepo.value = trimmed
+        prefs.setGitHubRepo(trimmed)
+        checkForUpdates(isManual = true)
+    }
+
+    fun checkForUpdates(isManual: Boolean = false) {
         viewModelScope.launch {
-            while (true) {
-                delay(1000)
-                val income = passiveIncomePerSec
-                if (income > 0) {
-                    _balance.update { it + income }
-                    prefs.saveBalance(_balance.value)
-                    _stats.update { it.copy(totalEarned = it.totalEarned + income) }
-                    persistStats()
+            _updateState.value = UpdateState.Checking
+            val result = otaRepository.checkLatestRelease(_githubRepo.value)
+            result.onSuccess { info ->
+                if (info.isNewerThanCurrent) {
+                    _updateState.value = UpdateState.Available(info)
+                    val dismissed = prefs.getDismissedUpdateVersion()
+                    if (!isManual && dismissed == info.tagName) {
+                        _showUpdateDialog.value = false
+                    } else {
+                        _showUpdateDialog.value = true
+                    }
+                } else {
+                    _updateState.value = UpdateState.UpToDate(
+                        checkedAtMillis = System.currentTimeMillis(),
+                        currentVersion = com.example.BuildConfig.VERSION_NAME
+                    )
+                    if (isManual) {
+                        showNotification("У вас установлена последняя версия (v${com.example.BuildConfig.VERSION_NAME})")
+                    }
                 }
-                checkPassiveIncomeQuest()
+            }.onFailure { err ->
+                _updateState.value = UpdateState.Error(err.message ?: "Ошибка проверки")
+                if (isManual) {
+                    showNotification(err.message ?: "Ошибка проверки обновлений")
+                }
             }
         }
     }
 
+    fun startDownloadUpdate(info: AppUpdateInfo) {
+        viewModelScope.launch {
+            _updateState.value = UpdateState.Downloading(
+                info = info,
+                progressPercent = 0,
+                downloadedBytes = 0L,
+                totalBytes = info.apkSize
+            )
+            val result = otaRepository.downloadApk(
+                downloadUrl = info.downloadUrl,
+                targetFileName = info.apkFileName.ifBlank { "sim_card_tycoon_${info.tagName}.apk" }
+            ) { percent, downloaded, total ->
+                _updateState.value = UpdateState.Downloading(
+                    info = info,
+                    progressPercent = percent,
+                    downloadedBytes = downloaded,
+                    totalBytes = total
+                )
+            }
+
+            result.onSuccess { file ->
+                _updateState.value = UpdateState.ReadyToInstall(info, file)
+            }.onFailure { err ->
+                _updateState.value = UpdateState.Error("Ошибка скачивания: ${err.message}")
+            }
+        }
+    }
+
+    fun installDownloadedApk(activityContext: android.content.Context, file: java.io.File) {
+        if (!otaRepository.canInstallUnknownApps()) {
+            showNotification("Разрешите установку из этого источника в настройках Android")
+            otaRepository.openInstallPermissionSettings(activityContext)
+            return
+        }
+        val result = otaRepository.installApk(activityContext, file)
+        result.onFailure {
+            showNotification("Не удалось запустить установку: ${it.message}")
+        }
+    }
+
+    fun dismissUpdateDialog(tagName: String? = null) {
+        if (tagName != null) {
+            prefs.setDismissedUpdateVersion(tagName)
+        }
+        _showUpdateDialog.value = false
+    }
+
+    fun openUpdateDialog() {
+        _showUpdateDialog.value = true
+    }
+
+
+    private var lastRollUptimeMillis = 0L
+    private var lastHapticUptimeMillis = 0L
+    private var inventorySaveJob: Job? = null
+
+    fun scheduleInventoryBackup(list: List<PhoneNumber>) {
+        inventorySaveJob?.cancel()
+        inventorySaveJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(300)
+            prefs.saveInventoryBackup(list)
+        }
+    }
+
     fun rollSingle() {
-        if (_balance.value < rollCost) {
-            showNotification("Недостаточно средств (нужно $rollCost ₽)")
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastRollUptimeMillis < 45) return // Throttles rapid auto-clicker taps to avoid ANR and dropped frames
+        lastRollUptimeMillis = now
+
+        val satLvl = _upgrades.value[UpgradeType.SATELLITE_ORBIT.id] ?: 0
+        val cashback = satLvl * 60L
+        val effectiveRollCost = (rollCost - cashback).coerceAtLeast(100L)
+
+        if (_balance.value < effectiveRollCost) {
+            showNotification("Недостаточно средств (нужно $effectiveRollCost ₽)")
             return
         }
 
-        _balance.update { it - rollCost }
+        _balance.update { it - effectiveRollCost }
         prefs.saveBalance(_balance.value)
 
         val mvdLvl = _upgrades.value[UpgradeType.MVD_INSIDER.id] ?: 0
         val goldLvl = _upgrades.value[UpgradeType.GOLDEN_DATABASE.id] ?: 0
-        val generated = PhoneGenerator.generate(mvdLvl, goldLvl, _levelInfo.value.level)
+        val quantumLvl = _upgrades.value[UpgradeType.QUANTUM_SCANNER.id] ?: 0
+        val presLvl = _upgrades.value[UpgradeType.PRESIDENTIAL_HOTLINE.id] ?: 0
+        val neuralLvl = _upgrades.value[UpgradeType.NEURAL_CLUSTER.id] ?: 0
+
+        val has5xLuck = _isLuckBoostActive.value
+        val luckMult = if (has5xLuck) 5.0 else 1.0
+
+        val generated = PhoneGenerator.generate(
+            mvdInsiderLevel = mvdLvl,
+            goldenDbLevel = goldLvl,
+            playerLevel = _levelInfo.value.level,
+            quantumScannerLevel = quantumLvl,
+            presidentialHotlineLevel = presLvl,
+            neuralClusterLevel = neuralLvl,
+            luckMultiplier = luckMult,
+            targetCountryIso = _selectedCountryIso.value
+        )
+
+        if (has5xLuck) {
+            _isLuckBoostActive.value = false
+            _luckPityRolls.value = 0
+            prefs.saveLuckPity(0)
+            showNotification("⚡ Сработал 5X бонус удачи! Выбит ${generated.rarity.title} номер!")
+        } else {
+            val nextPity = (_luckPityRolls.value + 1).coerceAtMost(100)
+            _luckPityRolls.value = nextPity
+            if (nextPity >= 100) {
+                _isLuckBoostActive.value = true
+                showNotification("🔥 5X УДАЧА ЗАРЯЖЕНА! Следующий номер гарантирует 5X шанс!")
+            }
+            prefs.saveLuckPity(nextPity)
+        }
 
         _currentNumber.value = generated
         _isCurrentSaved.value = false
@@ -490,8 +677,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         currentList.add(0, generated)
         trimInventoryToLimit(currentList)
         _inventory.value = currentList
-        prefs.saveInventoryBackup(currentList)
-        viewModelScope.launch {
+        scheduleInventoryBackup(currentList)
+
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 simDao.insertSim(SavedSimEntity.fromDomain(generated))
             } catch (_: Exception) {}
@@ -501,37 +689,46 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         updateRollQuests(generated)
         addExperienceForRoll(generated)
 
-        viewModelScope.launch {
-            if (generated.rarity.isGovOrSecret || generated.rarity == RarityTier.DIAMOND) {
-                _events.emit(GameEvent.Haptic(true))
-                _events.emit(
-                    GameEvent.Alert(
-                        title = "🚨 ЭКСКЛЮЗИВНЫЙ ПЕРЕХВАТ!",
-                        message = "Номер: ${generated.formatted}\nКатегория: ${generated.categoryDescription}\nОценка: ${formatMoney(generated.value)}"
+        if (now - lastHapticUptimeMillis >= 70) {
+            lastHapticUptimeMillis = now
+            viewModelScope.launch {
+                if (generated.rarity.isGovOrSecret || generated.rarity == RarityTier.DIAMOND) {
+                    _events.emit(GameEvent.Haptic(true))
+                    _events.emit(
+                        GameEvent.Alert(
+                            title = "🚨 ЭКСКЛЮЗИВНЫЙ ПЕРЕХВАТ!",
+                            message = "Номер: ${generated.formatted}\nСтрана: ${generated.countryName}\nОценка: ${formatMoney(generated.value)}"
+                        )
                     )
-                )
-            } else if (generated.rarity == RarityTier.GOLD || generated.rarity == RarityTier.PLATINUM) {
-                _events.emit(GameEvent.Haptic(true))
-            } else {
-                _events.emit(GameEvent.Haptic(false))
+                } else if (generated.rarity == RarityTier.GOLD || generated.rarity == RarityTier.PLATINUM) {
+                    _events.emit(GameEvent.Haptic(true))
+                } else {
+                    _events.emit(GameEvent.Haptic(false))
+                }
             }
         }
     }
 
-    private fun addExperienceForRoll(number: PhoneNumber) {
+    private fun addExperienceForRoll(number: PhoneNumber, isAutoRoll: Boolean = false) {
         val xpGain = PlayerProgression.getXpRewardForNumber(number)
-        _lastXpGained.value = xpGain
+        if (!isAutoRoll) {
+            _lastXpGained.value = xpGain
+        }
 
         val oldLevel = _levelInfo.value.level
         val newXp = _playerXp.value + xpGain
         _playerXp.value = newXp
-        prefs.savePlayerXp(newXp)
+        if (!isAutoRoll) {
+            prefs.savePlayerXp(newXp)
+        }
 
         val newInfo = PlayerProgression.getLevelInfo(newXp)
         _levelInfo.value = newInfo
 
-        viewModelScope.launch {
-            _events.emit(GameEvent.XpGained(xpGain, number.value))
+        if (!isAutoRoll) {
+            viewModelScope.launch {
+                _events.emit(GameEvent.XpGained(xpGain, number.value))
+            }
         }
 
         if (newInfo.level > oldLevel) {
@@ -558,17 +755,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        _balance.update { it + current.value }
+        val effectivePrice = getEffectiveSellPrice(current)
+        _balance.update { it + effectivePrice }
         prefs.saveBalance(_balance.value)
-        _stats.update { it.copy(totalEarned = it.totalEarned + current.value) }
+        _stats.update { it.copy(totalEarned = it.totalEarned + effectivePrice) }
         persistStats()
-        showNotification("Продано: +${formatMoney(current.value)}")
-        updateQuestProgress("daily_earn_3k", current.value)
+        showNotification("Продано: +${formatMoney(effectivePrice)}")
+        updateQuestsByCondition(effectivePrice) { it.categoryIcon == "money" || it.id.contains("earn") }
 
         val updated = _inventory.value.filter { it.id != current.id }
         _inventory.value = updated
-        prefs.saveInventoryBackup(updated)
-        viewModelScope.launch {
+        scheduleInventoryBackup(updated)
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 simDao.deleteSimById(current.id)
             } catch (_: Exception) {}
@@ -581,9 +779,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             checkPassiveIncomeQuest()
         }
 
-        _currentNumber.value = null
+        val nextNumber = updated.firstOrNull() ?: _activeSim.value ?: PhoneGenerator.generate(0, 0, _levelInfo.value.level)
+        _currentNumber.value = nextNumber
         _isCurrentSaved.value = true
-        prefs.saveCurrentNumber(null)
+        prefs.saveCurrentNumber(nextNumber)
     }
 
     fun saveCurrentToVault(): Boolean {
@@ -607,9 +806,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         updated.add(0, updatedCurrent)
         trimInventoryToLimit(updated)
         _inventory.value = updated
-        prefs.saveInventoryBackup(updated)
+        scheduleInventoryBackup(updated)
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 simDao.insertSim(SavedSimEntity.fromDomain(updatedCurrent))
             } catch (_: Exception) {}
@@ -631,8 +830,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (it.id == number.id) it.copy(isInVault = true) else it
             }
             _inventory.value = updated
-            prefs.saveInventoryBackup(updated)
-            viewModelScope.launch {
+            scheduleInventoryBackup(updated)
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
                     simDao.updateVaultStatus(number.id, true)
                 } catch (_: Exception) {}
@@ -649,8 +848,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (it.id == number.id) it.copy(isInVault = false) else it
             }
             _inventory.value = updated
-            prefs.saveInventoryBackup(updated)
-            viewModelScope.launch {
+            scheduleInventoryBackup(updated)
+            viewModelScope.launch(Dispatchers.IO) {
                 try {
                     simDao.updateVaultStatus(number.id, false)
                 } catch (_: Exception) {}
@@ -670,9 +869,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         val updated = _inventory.value.filter { it.id != number.id }
         _inventory.value = updated
-        prefs.saveInventoryBackup(updated)
+        scheduleInventoryBackup(updated)
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 simDao.deleteSimById(number.id)
             } catch (_: Exception) {}
@@ -684,46 +883,99 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             checkPassiveIncomeQuest()
         }
         if (_currentNumber.value?.id == number.id) {
-            _currentNumber.value = null
-            prefs.saveCurrentNumber(null)
+            val nextSim = updated.firstOrNull() ?: _activeSim.value ?: PhoneGenerator.generate(0, 0, _levelInfo.value.level)
+            _currentNumber.value = nextSim
+            prefs.saveCurrentNumber(nextSim)
         }
-        _balance.update { it + number.value }
+        val effectivePrice = getEffectiveSellPrice(number)
+        _balance.update { it + effectivePrice }
         prefs.saveBalance(_balance.value)
-        _stats.update { it.copy(totalEarned = it.totalEarned + number.value) }
+        _stats.update { it.copy(totalEarned = it.totalEarned + effectivePrice) }
         persistStats()
-        showNotification("SIM продана за ${formatMoney(number.value)}")
-        updateQuestProgress("daily_earn_3k", number.value)
+        showNotification("SIM продана за ${formatMoney(effectivePrice)}")
+        updateQuestsByCondition(effectivePrice) { it.id.contains("earn") || it.categoryIcon == "money" }
     }
 
     fun sellAllCommonFromInventory() {
         val itemsToSell = _inventory.value.filter {
-            it.rarity == RarityTier.COMMON && !it.isInVault && it.id != _activeSim.value?.id
+            it.rarity == RarityTier.COMMON && !it.isInVault
         }
         if (itemsToSell.isEmpty()) {
             showNotification("Нет обычных незапертых номеров для продажи")
             return
         }
-        val totalGain = itemsToSell.sumOf { it.value }
+        val totalGain = itemsToSell.sumOf { getEffectiveSellPrice(it) }
         val toSellIds = itemsToSell.map { it.id }.toSet()
         val updated = _inventory.value.filter { it.id !in toSellIds }
         _inventory.value = updated
-        prefs.saveInventoryBackup(updated)
+        scheduleInventoryBackup(updated)
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                toSellIds.forEach { simDao.deleteSimById(it) }
+                simDao.deleteSimsByIds(toSellIds.toList())
             } catch (_: Exception) {}
         }
+        if (_activeSim.value?.id in toSellIds) {
+            val nextSim = updated.firstOrNull() ?: _inventory.value.firstOrNull { it.isInVault }
+            _activeSim.value = nextSim
+            prefs.saveActiveSim(nextSim)
+            checkPassiveIncomeQuest()
+        }
         if (_currentNumber.value?.id in toSellIds) {
-            _currentNumber.value = null
-            prefs.saveCurrentNumber(null)
+            val nextSim = updated.firstOrNull() ?: _activeSim.value ?: PhoneGenerator.generate(0, 0, _levelInfo.value.level)
+            _currentNumber.value = nextSim
+            prefs.saveCurrentNumber(nextSim)
         }
         _balance.update { it + totalGain }
         prefs.saveBalance(_balance.value)
         _stats.update { it.copy(totalEarned = it.totalEarned + totalGain) }
         persistStats()
         showNotification("Продано ${itemsToSell.size} обычных номеров (+${formatMoney(totalGain)})")
-        updateQuestProgress("daily_earn_3k", totalGain)
+        updateQuestsByCondition(totalGain) { it.id.contains("earn") || it.categoryIcon == "money" }
+        viewModelScope.launch {
+            _events.emit(GameEvent.Haptic(true))
+        }
+    }
+
+    fun sellAllFromInventory() {
+        val itemsToSell = _inventory.value.filter {
+            !it.isInVault
+        }
+        if (itemsToSell.isEmpty()) {
+            showNotification("В коллекции нет свободных номеров для продажи (сейф защищён)")
+            return
+        }
+        val totalGain = itemsToSell.sumOf { getEffectiveSellPrice(it) }
+        val toSellIds = itemsToSell.map { it.id }.toSet()
+        val updated = _inventory.value.filter { it.id !in toSellIds }
+        _inventory.value = updated
+        scheduleInventoryBackup(updated)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                simDao.deleteSimsByIds(toSellIds.toList())
+            } catch (_: Exception) {}
+        }
+        if (_activeSim.value?.id in toSellIds) {
+            val nextSim = updated.firstOrNull() ?: _inventory.value.firstOrNull { it.isInVault }
+            _activeSim.value = nextSim
+            prefs.saveActiveSim(nextSim)
+            checkPassiveIncomeQuest()
+        }
+        if (_currentNumber.value?.id in toSellIds) {
+            val nextSim = updated.firstOrNull() ?: _activeSim.value ?: PhoneGenerator.generate(0, 0, _levelInfo.value.level)
+            _currentNumber.value = nextSim
+            prefs.saveCurrentNumber(nextSim)
+        }
+        _balance.update { it + totalGain }
+        prefs.saveBalance(_balance.value)
+        _stats.update { it.copy(totalEarned = it.totalEarned + totalGain) }
+        persistStats()
+        showNotification("Продано всё из коллекции: ${itemsToSell.size} шт. (+${formatMoney(totalGain)})")
+        updateQuestsByCondition(totalGain) { it.id.contains("earn") || it.categoryIcon == "money" }
+        viewModelScope.launch {
+            _events.emit(GameEvent.Haptic(true))
+        }
     }
 
     fun setActiveSim(number: PhoneNumber) {
@@ -755,27 +1007,59 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         autoRollJob = viewModelScope.launch {
             try {
                 val turboLvl = _upgrades.value[UpgradeType.TURBO_ROLL.id] ?: 0
-                val interval = (130L - (turboLvl * 18L)).coerceAtLeast(40L)
+                val interval = (380L - (turboLvl * 15L)).coerceAtLeast(220L)
+                val satLvl = _upgrades.value[UpgradeType.SATELLITE_ORBIT.id] ?: 0
+                val cashback = satLvl * 60L
+                val effectiveCost = (rollCost - cashback).coerceAtLeast(100L)
+                var rollCounter = 0
 
                 while (_autoSellConfig.value.isAutoRolling) {
-                    if (_balance.value < rollCost) {
-                        showNotification("Автокрутка: закончились средства")
+                    if (_balance.value < effectiveCost) {
+                        showNotification("Автокрутка: закончились средства (нужно $effectiveCost ₽)")
                         break
                     }
 
-                    _balance.update { it - rollCost }
-                    prefs.saveBalance(_balance.value)
+                    _balance.update { it - effectiveCost }
 
                     val mvdLvl = _upgrades.value[UpgradeType.MVD_INSIDER.id] ?: 0
                     val goldLvl = _upgrades.value[UpgradeType.GOLDEN_DATABASE.id] ?: 0
-                    val generated = PhoneGenerator.generate(mvdLvl, goldLvl, _levelInfo.value.level)
+                    val quantumLvl = _upgrades.value[UpgradeType.QUANTUM_SCANNER.id] ?: 0
+                    val presLvl = _upgrades.value[UpgradeType.PRESIDENTIAL_HOTLINE.id] ?: 0
+                    val neuralLvl = _upgrades.value[UpgradeType.NEURAL_CLUSTER.id] ?: 0
+
+                    val has5xLuck = _isLuckBoostActive.value
+                    val luckMult = if (has5xLuck) 5.0 else 1.0
+
+                    val generated = PhoneGenerator.generate(
+                        mvdInsiderLevel = mvdLvl,
+                        goldenDbLevel = goldLvl,
+                        playerLevel = _levelInfo.value.level,
+                        quantumScannerLevel = quantumLvl,
+                        presidentialHotlineLevel = presLvl,
+                        neuralClusterLevel = neuralLvl,
+                        luckMultiplier = luckMult,
+                        targetCountryIso = _selectedCountryIso.value
+                    )
+
+                    if (has5xLuck) {
+                        _isLuckBoostActive.value = false
+                        _luckPityRolls.value = 0
+                        prefs.saveLuckPity(0)
+                        showNotification("⚡ Сработал 5X бонус удачи! Выбит ${generated.rarity.title} номер!")
+                    } else {
+                        val nextPity = (_luckPityRolls.value + 1).coerceAtMost(100)
+                        _luckPityRolls.value = nextPity
+                        if (nextPity >= 100) {
+                            _isLuckBoostActive.value = true
+                        }
+                        prefs.saveLuckPity(nextPity)
+                    }
 
                     _currentNumber.value = generated
-                    prefs.saveCurrentNumber(generated)
 
                     recordStats(generated)
                     updateRollQuests(generated)
-                    addExperienceForRoll(generated)
+                    addExperienceForRoll(generated, isAutoRoll = true)
 
                     val isUltra = generated.rarity.isGovOrSecret || generated.rarity == RarityTier.DIAMOND
                     if (isUltra && _autoSellConfig.value.stopOnUltraRare) {
@@ -825,24 +1109,29 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                             showNotification("Сохранен в сейф: ${generated.formatted}")
                             updateQuestProgress("daily_vault_1", 1)
                             updateQuestProgress("monthly_vault_8", vaultCount.toLong(), isAbsolute = true)
-                        } else {
-                            if (_autoSellConfig.value.autoSaveKeptToInventory && vaultCount >= vaultCapacity) {
-                                showNotification("Сейф полон! В инвентаре: ${generated.formatted}")
-                            } else {
-                                showNotification("В инвентаре: ${generated.formatted}")
-                            }
+                        } else if (vaultCount >= vaultCapacity && _autoSellConfig.value.autoSaveKeptToInventory) {
+                            showNotification("Сейф полон! В инвентаре: ${generated.formatted}")
                         }
                     } else {
-                        _balance.update { it + generated.value }
+                        val autoPrice = getEffectiveSellPrice(generated)
+                        _balance.update { it + autoPrice }
+                        _stats.update { it.copy(totalEarned = it.totalEarned + autoPrice) }
+                        updateQuestsByCondition(autoPrice) { it.id.contains("earn") || it.categoryIcon == "money" }
+                    }
+
+                    rollCounter++
+                    if (rollCounter % 10 == 0) {
                         prefs.saveBalance(_balance.value)
-                        _stats.update { it.copy(totalEarned = it.totalEarned + generated.value) }
+                        prefs.saveCurrentNumber(generated)
+                        prefs.savePlayerXp(_playerXp.value)
                         persistStats()
-                        updateQuestProgress("daily_earn_3k", generated.value)
                     }
 
                     delay(interval)
                 }
             } finally {
+                prefs.saveBalance(_balance.value)
+                persistStats()
                 stopAutoRoll()
             }
         }
@@ -875,9 +1164,24 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         prefs.saveUpgrades(newUpgrades)
 
         showNotification("${type.title} прокачан до ур. ${currLevel + 1}!")
-        updateQuestProgress("weekly_upgrade_2", 1)
+        updateQuestsByCondition(1) { it.categoryIcon == "upgrade" || it.id.contains("upgrade") }
         checkPassiveIncomeQuest()
 
+        viewModelScope.launch {
+            _events.emit(GameEvent.Haptic(false))
+        }
+    }
+
+    fun refreshQuests(period: QuestPeriod? = null) {
+        val current = _quests.value
+        val updated = current.map { q ->
+            if (period == null || q.period == period) {
+                generateDynamicQuest(q.period)
+            } else q
+        }
+        _quests.value = updated
+        prefs.saveQuests(updated)
+        showNotification("Контракты обновлены! Доступны новые задания.")
         viewModelScope.launch {
             _events.emit(GameEvent.Haptic(false))
         }
@@ -909,6 +1213,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _events.emit(GameEvent.Haptic(true))
             _events.emit(GameEvent.Celebration(quest.rewardAmount, quest.title))
+
+            // Replace claimed quest with a dynamic fresh contract
+            delay(450)
+            _quests.update { list ->
+                list.map {
+                    if (it.id == questId) {
+                        generateDynamicQuest(it.period)
+                    } else it
+                }
+            }
+            prefs.saveQuests(_quests.value)
         }
     }
 
@@ -933,28 +1248,42 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun updateRollQuests(number: PhoneNumber) {
-        updateQuestProgress("daily_rolls_25", 1)
-        updateQuestProgress("weekly_rolls_200", 1)
-        updateQuestProgress("monthly_rolls_1000", 1)
+        updateQuestsByCondition(1) { it.categoryIcon == "roll" || it.id.contains("rolls") }
 
         if (number.rarity.ordinal >= RarityTier.BRONZE.ordinal) {
-            updateQuestProgress("daily_bronze_2", 1)
+            updateQuestsByCondition(1) { it.categoryIcon == "bronze" || it.id.contains("bronze") }
         }
         if (number.rarity.ordinal >= RarityTier.SILVER.ordinal) {
-            updateQuestProgress("weekly_silver_5", 1)
+            updateQuestsByCondition(1) { it.categoryIcon == "silver" || it.id.contains("silver") }
         }
         if (number.rarity.ordinal >= RarityTier.GOLD.ordinal) {
-            updateQuestProgress("weekly_gold_1", 1)
+            updateQuestsByCondition(1) { it.categoryIcon == "gold" || it.id.contains("gold") }
         }
         if (number.rarity.isGovOrSecret || number.rarity == RarityTier.DIAMOND || number.rarity == RarityTier.PLATINUM) {
-            updateQuestProgress("monthly_gov_or_plat", 1)
+            updateQuestsByCondition(1) { it.categoryIcon == "gov" || it.id.contains("gov") || it.id.contains("plat") || it.id.contains("spec") }
+        }
+        if (number.digits.contains("777") || number.prefix == "777" || number.digits.contains("999") || number.prefix == "999") {
+            updateQuestsByCondition(1) { it.id.contains("777") || it.id.contains("vip_code") }
+        }
+        if (number.totalMultiplier >= 2.0) {
+            updateQuestsByCondition(1) { it.id.contains("combo") || it.categoryIcon == "combo" }
+        }
+        if (number.operatorName.contains("Билайн", ignoreCase = true) || number.operatorName.contains("Yota", ignoreCase = true) || number.operatorName.contains("Мегафон", ignoreCase = true)) {
+            updateQuestsByCondition(1) { it.id.contains("operator") }
+        }
+        if (number.categoryDescription.contains("зеркал", ignoreCase = true) ||
+            number.categoryDescription.contains("дубль", ignoreCase = true) ||
+            number.categoryDescription.contains("палиндром", ignoreCase = true) ||
+            number.categoryDescription.contains("хвост", ignoreCase = true)
+        ) {
+            updateQuestsByCondition(1) { it.id.contains("mirror") || it.id.contains("double") }
         }
     }
 
-    private fun updateQuestProgress(questId: String, delta: Long, isAbsolute: Boolean = false) {
+    fun updateQuestsByCondition(delta: Long = 1, isAbsolute: Boolean = false, predicate: (Quest) -> Boolean) {
         _quests.update { list ->
             list.map { q ->
-                if (q.id == questId && !q.isClaimed) {
+                if (!q.isClaimed && predicate(q)) {
                     val target = q.targetProgress.toLong()
                     val newProg = if (isAbsolute) {
                         delta.coerceIn(0L, target)
@@ -968,6 +1297,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         prefs.saveQuests(_quests.value)
+    }
+
+    private fun updateQuestProgress(questId: String, delta: Long, isAbsolute: Boolean = false) {
+        updateQuestsByCondition(delta, isAbsolute) { it.id == questId }
     }
 
     private fun recordStats(number: PhoneNumber) {
@@ -1038,6 +1371,52 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         _notification.value = null
     }
 
+    private var questGenCounter = 0
+
+    private fun generateDynamicQuest(period: QuestPeriod): Quest {
+        questGenCounter++
+        val uid = "${period.name.lowercase()}_dyn_${System.currentTimeMillis() % 100000}_$questGenCounter"
+        return when (period) {
+            QuestPeriod.DAILY -> {
+                val pool = listOf(
+                    Quest(uid, QuestPeriod.DAILY, "Охота за кодом 777", "Выбейте номер с комбинацией или кодом 777", 0, 1, 8_000, false, "gold"),
+                    Quest(uid, QuestPeriod.DAILY, "Зеркальный палиндром", "Выбейте номер с зеркальным или парным хвостом", 0, 1, 6_000, false, "silver"),
+                    Quest(uid, QuestPeriod.DAILY, "Крипто-нумеролог", "Поймайте красивый номер с множителем x2.0+", 0, 1, 7_500, false, "combo"),
+                    Quest(uid, QuestPeriod.DAILY, "Контракт операторов", "Выбейте 2 номера Билайн, Yota или Мегафон", 0, 2, 5_000, false, "operator"),
+                    Quest(uid, QuestPeriod.DAILY, "В золотой сейф", "Сохраните 2 ценных номера в сейф", 0, 2, 4_000, false, "vault"),
+                    Quest(uid, QuestPeriod.DAILY, "Выручка дилера", "Заработайте 15 000 ₽ на продаже номеров", 0, 15_000, 8_000, false, "money"),
+                    Quest(uid, QuestPeriod.DAILY, "Срочный перебор", "Сделайте 35 быстрых круток телефонных номеров", 0, 35, 3_000, false, "roll"),
+                    Quest(uid, QuestPeriod.DAILY, "Телеком-серия", "Выбейте 3 номера ранга Бронза или выше", 0, 3, 4_500, false, "bronze"),
+                    Quest(uid, QuestPeriod.DAILY, "Серебряная удача", "Выбейте 1 номер ранга Серебро или выше", 0, 1, 6_500, false, "silver"),
+                    Quest(uid, QuestPeriod.DAILY, "Модернизация вышки", "Купите 1 любое улучшение в магазине", 0, 1, 4_000, false, "upgrade")
+                )
+                pool.random()
+            }
+            QuestPeriod.WEEKLY -> {
+                val pool = listOf(
+                    Quest(uid, QuestPeriod.WEEKLY, "Спецсвязь и Элита", "Выбейте 45 номеров Платина, Бриллиант или МВД/ФСБ", 0, 45, 25_000_000, false, "gov"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Торговый синдикат", "Заработайте 150 000 000 ₽ на продаже номеров", 0, 150_000_000, 45_000_000, false, "money"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Счастливые топоры", "Выбейте 60 номеров с комбинацией 777 или 999", 0, 60, 20_000_000, false, "gold"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Золотой фонд", "Выбейте 60 Золотых VIP-номеров", 0, 60, 18_000_000, false, "gold"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Архивариус спецбазы", "Сохраните 25 ценных номеров в сейфе", 0, 25, 15_000_000, false, "vault"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Инфраструктурный скачок", "Купите любые 25 улучшений в магазине", 0, 25, 15_000_000, false, "upgrade"),
+                    Quest(uid, QuestPeriod.WEEKLY, "Телеком-стахановец", "Сделайте 5 000 круток номеров за неделю", 0, 5_000, 14_000_000, false, "roll")
+                )
+                pool.random()
+            }
+            QuestPeriod.MONTHLY -> {
+                val pool = listOf(
+                    Quest(uid, QuestPeriod.MONTHLY, "Легенда связи", "Сделайте 40 000 круток в текущем сезоне", 0, 40_000, 150_000_000, false, "roll"),
+                    Quest(uid, QuestPeriod.MONTHLY, "Вертушка АТС-1", "Выбейте 30 правительственных номеров спецсвязи или Бриллиант", 0, 30, 300_000_000, false, "gov"),
+                    Quest(uid, QuestPeriod.MONTHLY, "Сейф инвестора", "Соберите коллекцию из 50 номеров в сейфе", 0, 50, 120_000_000, false, "vault"),
+                    Quest(uid, QuestPeriod.MONTHLY, "Олигарх сезона", "Заработайте 1 000 000 000 ₽ на продаже номеров", 0, 1_000_000_000, 500_000_000, false, "money"),
+                    Quest(uid, QuestPeriod.MONTHLY, "Золотая гвардия", "Выбейте 300 номеров ранга Золото или выше", 0, 300, 250_000_000, false, "gold")
+                )
+                pool.random()
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         autoRollJob?.cancel()
@@ -1056,111 +1435,111 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         private fun createInitialQuests(): List<Quest> {
             return listOf(
                 Quest(
-                    id = "daily_rolls_25",
+                    id = "daily_777_hunt",
                     period = QuestPeriod.DAILY,
-                    title = "Быстрый перебор",
-                    description = "Сделайте 25 круток телефонных номеров",
-                    targetProgress = 25,
-                    rewardAmount = 750,
-                    categoryIcon = "roll"
+                    title = "Охота за кодом 777",
+                    description = "Выбейте номер с комбинацией или кодом 777",
+                    targetProgress = 1,
+                    rewardAmount = 8_000,
+                    categoryIcon = "gold"
                 ),
                 Quest(
-                    id = "daily_bronze_2",
+                    id = "daily_bronze_3",
                     period = QuestPeriod.DAILY,
-                    title = "Первый улов",
-                    description = "Выбейте 2 номера ранга Бронза или выше",
-                    targetProgress = 2,
-                    rewardAmount = 1_200,
+                    title = "Телеком-серия",
+                    description = "Выбейте 3 номера ранга Бронза или выше",
+                    targetProgress = 3,
+                    rewardAmount = 4_500,
                     categoryIcon = "bronze"
                 ),
                 Quest(
-                    id = "daily_vault_1",
+                    id = "daily_vault_2",
                     period = QuestPeriod.DAILY,
-                    title = "В коллекцию",
-                    description = "Сохраните 1 номер в сейф",
-                    targetProgress = 1,
-                    rewardAmount = 600,
+                    title = "В золотой сейф",
+                    description = "Сохраните 2 ценных номера в сейф",
+                    targetProgress = 2,
+                    rewardAmount = 4_000,
                     categoryIcon = "vault"
                 ),
                 Quest(
-                    id = "daily_earn_3k",
+                    id = "daily_earn_15k",
                     period = QuestPeriod.DAILY,
-                    title = "Дневная выручка",
-                    description = "Заработайте 3 000 ₽ на продаже номеров",
-                    targetProgress = 3_000,
-                    rewardAmount = 1_500,
+                    title = "Выручка дилера",
+                    description = "Заработайте 15 000 ₽ на продаже номеров",
+                    targetProgress = 15_000,
+                    rewardAmount = 8_000,
                     categoryIcon = "money"
                 ),
                 Quest(
-                    id = "weekly_rolls_200",
+                    id = "weekly_gov_or_plat",
                     period = QuestPeriod.WEEKLY,
-                    title = "Телеком-стахановец",
-                    description = "Сделайте 200 круток номеров за неделю",
-                    targetProgress = 200,
-                    rewardAmount = 10_000,
-                    categoryIcon = "roll"
+                    title = "Спецсвязь и Элита",
+                    description = "Выбейте 45 номеров Платина, Бриллиант или МВД/ФСБ",
+                    targetProgress = 45,
+                    rewardAmount = 25_000_000,
+                    categoryIcon = "gov"
                 ),
                 Quest(
-                    id = "weekly_silver_5",
+                    id = "weekly_trade_syndicate",
                     period = QuestPeriod.WEEKLY,
-                    title = "Серебряный резерв",
-                    description = "Выбейте 5 номеров Серебро или выше",
-                    targetProgress = 5,
-                    rewardAmount = 15_000,
-                    categoryIcon = "silver"
+                    title = "Торговый синдикат",
+                    description = "Заработайте 150 000 000 ₽ на продаже номеров",
+                    targetProgress = 150_000_000,
+                    rewardAmount = 45_000_000,
+                    categoryIcon = "money"
                 ),
                 Quest(
-                    id = "weekly_gold_1",
+                    id = "weekly_gold_2",
                     period = QuestPeriod.WEEKLY,
-                    title = "Золотая лихорадка",
-                    description = "Выбейте хотя бы 1 Золотой VIP-номер",
-                    targetProgress = 1,
-                    rewardAmount = 25_000,
+                    title = "Золотой фонд",
+                    description = "Выбейте 60 Золотых VIP-номеров",
+                    targetProgress = 60,
+                    rewardAmount = 18_000_000,
                     categoryIcon = "gold"
                 ),
                 Quest(
                     id = "weekly_upgrade_2",
                     period = QuestPeriod.WEEKLY,
-                    title = "Модернизация сети",
-                    description = "Купите любые 2 улучшения в магазине",
-                    targetProgress = 2,
-                    rewardAmount = 9_000,
+                    title = "Инфраструктурный скачок",
+                    description = "Купите любые 25 улучшений в магазине",
+                    targetProgress = 25,
+                    rewardAmount = 15_000_000,
                     categoryIcon = "upgrade"
                 ),
                 Quest(
                     id = "monthly_rolls_1000",
                     period = QuestPeriod.MONTHLY,
-                    title = "Легенда связи РФ",
-                    description = "Сделайте 1 000 круток в текущем сезоне",
-                    targetProgress = 1_000,
-                    rewardAmount = 60_000,
+                    title = "Легенда связи",
+                    description = "Сделайте 40 000 круток в текущем сезоне",
+                    targetProgress = 40_000,
+                    rewardAmount = 150_000_000,
                     categoryIcon = "roll"
                 ),
                 Quest(
-                    id = "monthly_gov_or_plat",
+                    id = "monthly_kremlin_vertushka",
                     period = QuestPeriod.MONTHLY,
-                    title = "Спецсвязь и Элита",
-                    description = "Выбейте номер Платина, Бриллиант или МВД/ФСБ",
-                    targetProgress = 1,
-                    rewardAmount = 150_000,
+                    title = "Вертушка АТС-1",
+                    description = "Выбейте 30 правительственных номеров спецсвязи или Бриллиант",
+                    targetProgress = 30,
+                    rewardAmount = 300_000_000,
                     categoryIcon = "gov"
                 ),
                 Quest(
                     id = "monthly_vault_8",
                     period = QuestPeriod.MONTHLY,
-                    title = "Золотой архив",
-                    description = "Соберите коллекцию из 8 номеров в сейфе",
-                    targetProgress = 8,
-                    rewardAmount = 40_000,
+                    title = "Сейф инвестора",
+                    description = "Соберите коллекцию из 50 номеров в сейфе",
+                    targetProgress = 50,
+                    rewardAmount = 120_000_000,
                     categoryIcon = "vault"
                 ),
                 Quest(
                     id = "monthly_passive_income",
                     period = QuestPeriod.MONTHLY,
-                    title = "Телеком-магнат",
-                    description = "Соберите 50 ₽ пассивного дохода за секунду",
-                    targetProgress = 50,
-                    rewardAmount = 50_000,
+                    title = "Олигарх сезона",
+                    description = "Заработайте 1 000 000 000 ₽ на продаже номеров",
+                    targetProgress = 1_000_000_000,
+                    rewardAmount = 500_000_000,
                     categoryIcon = "money"
                 )
             )

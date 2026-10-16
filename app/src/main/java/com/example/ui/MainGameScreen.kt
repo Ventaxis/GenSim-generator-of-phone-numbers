@@ -41,28 +41,42 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Public
+import com.example.generator.PhoneGenerator
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MilitaryTech
+import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import com.example.model.PlayerProgression
+import kotlin.math.abs
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
@@ -95,21 +109,34 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AutoSellConfig
+import com.example.model.PhoneNumber
+import com.example.model.RarityTier
+import com.example.model.UpdateState
 import com.example.ui.components.AutoRollSettingsDialog
-import com.example.ui.components.DiagnosticLogView
+import com.example.ui.components.CountryFlag
+import com.example.ui.components.CountrySelectionDialog
 import com.example.ui.components.DrawerDestination
 import com.example.ui.components.GameDrawerContent
 import com.example.ui.components.LevelPerksDialog
+import com.example.ui.components.NumberDetailDialog
+import com.example.ui.components.RarityCatalogDialog
 import com.example.ui.components.SimCardView
+import com.example.ui.components.UpdatePromptDialog
 import com.example.ui.tabs.InventoryTab
+import com.example.ui.tabs.OtaUpdateScreen
 import com.example.ui.tabs.QuestsTab
 import com.example.ui.tabs.StatsTab
 import com.example.ui.tabs.UpgradesTab
+import com.example.ui.theme.DarkBg
+import com.example.ui.theme.DarkSurface
+import com.example.ui.theme.DarkSurfaceElevated
 import com.example.ui.theme.DeepObsidian
 import com.example.ui.theme.EmeraldProfit
 import com.example.ui.theme.GlassBorder
 import com.example.ui.theme.LiquidGoldMid
 import com.example.ui.theme.LiquidGoldStart
+import com.example.ui.theme.PrimaryActionBlue
+import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.viewmodel.GameEvent
@@ -134,14 +161,22 @@ fun MainGameScreen(viewModel: GameViewModel) {
     val stats by viewModel.stats.collectAsState()
     val quests by viewModel.quests.collectAsState()
     val notification by viewModel.notification.collectAsState()
+    val luckPityRolls by viewModel.luckPityRolls.collectAsState()
+    val isLuckBoostActive by viewModel.isLuckBoostActive.collectAsState()
+    val selectedCountryIso by viewModel.selectedCountryIso.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
+    val showUpdateDialog by viewModel.showUpdateDialog.collectAsState()
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     var currentSubScreen by remember { mutableStateOf(DrawerDestination.NONE) }
     var showAutoSellSettingsModal by remember { mutableStateOf(false) }
     var showLevelPerksModal by remember { mutableStateOf(false) }
+    var showRarityCatalogModal by remember { mutableStateOf(false) }
+    var showCountrySelectionModal by remember { mutableStateOf(false) }
     var alertEvent by remember { mutableStateOf<GameEvent.Alert?>(null) }
     var celebrationEvent by remember { mutableStateOf<GameEvent.Celebration?>(null) }
     var levelUpEvent by remember { mutableStateOf<GameEvent.LevelUp?>(null) }
+    var selectedNumberForDetail by remember { mutableStateOf<PhoneNumber?>(null) }
 
     var isTappedState by remember { mutableStateOf(false) }
     val cardScale by animateFloatAsState(
@@ -332,6 +367,19 @@ fun MainGameScreen(viewModel: GameViewModel) {
         )
     }
 
+    if (showUpdateDialog && updateState is UpdateState.Available) {
+        val availableInfo = (updateState as UpdateState.Available).info
+        UpdatePromptDialog(
+            updateInfo = availableInfo,
+            onDismiss = { viewModel.dismissUpdateDialog(availableInfo.tagName) },
+            onConfirmUpdate = {
+                viewModel.dismissUpdateDialog()
+                viewModel.startDownloadUpdate(availableInfo)
+                currentSubScreen = DrawerDestination.OTA_UPDATES
+            }
+        )
+    }
+
     if (showAutoSellSettingsModal) {
         AutoRollSettingsDialog(
             config = autoSellConfig,
@@ -350,12 +398,52 @@ fun MainGameScreen(viewModel: GameViewModel) {
         )
     }
 
+    if (showRarityCatalogModal) {
+        RarityCatalogDialog(
+            onDismissRequest = { showRarityCatalogModal = false }
+        )
+    }
+
+    if (showCountrySelectionModal) {
+        CountrySelectionDialog(
+            selectedIso = selectedCountryIso,
+            onSelectCountry = { viewModel.selectCountry(it) },
+            onDismissRequest = { showCountrySelectionModal = false }
+        )
+    }
+
+    selectedNumberForDetail?.let { detailSim ->
+        NumberDetailDialog(
+            number = detailSim,
+            effectiveSellPrice = viewModel.getEffectiveSellPrice(detailSim),
+            isActiveSim = activeSim?.id == detailSim.id,
+            canVault = viewModel.vaultCount < viewModel.vaultCapacity || detailSim.isInVault,
+            onDismiss = { selectedNumberForDetail = null },
+            onToggleVault = {
+                viewModel.toggleVaultStatus(detailSim)
+                selectedNumberForDetail = null
+            },
+            onSetActiveSim = {
+                viewModel.setActiveSim(detailSim)
+                selectedNumberForDetail = null
+            },
+            onSell = {
+                if (currentNumber?.id == detailSim.id) {
+                    viewModel.sellCurrent()
+                } else {
+                    viewModel.sellFromInventory(detailSim)
+                }
+                selectedNumberForDetail = null
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = Color(0xF50A0E17),
-                modifier = Modifier.width(320.dp)
+                drawerContainerColor = DarkBg,
+                modifier = Modifier.width(290.dp)
             ) {
                 GameDrawerContent(
                     balance = balance,
@@ -364,7 +452,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                     activeSim = activeSim,
                     vaultCount = viewModel.vaultCount,
                     vaultCapacity = viewModel.vaultCapacity,
-                    inventoryCount = inventory.size,
+                    inventoryCount = inventory.count { !it.isInVault },
                     unclaimedQuestsCount = unclaimedQuests,
                     onSelectDestination = { dest ->
                         scope.launch { drawerState.close() }
@@ -372,6 +460,10 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             showAutoSellSettingsModal = true
                         } else if (dest == DrawerDestination.LEVEL_PERKS) {
                             showLevelPerksModal = true
+                        } else if (dest == DrawerDestination.RARITY_CATALOG) {
+                            showRarityCatalogModal = true
+                        } else if (dest == DrawerDestination.SELECT_COUNTRY) {
+                            showCountrySelectionModal = true
                         } else {
                             currentSubScreen = dest
                         }
@@ -387,22 +479,6 @@ fun MainGameScreen(viewModel: GameViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(DeepObsidian)
-                .drawBehind {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color(0x281D4ED8), Color.Transparent),
-                            center = Offset(size.width * 0.15f, size.height * 0.22f),
-                            radius = size.width * 0.65f
-                        )
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color(0x28FFB800), Color.Transparent),
-                            center = Offset(size.width * 0.85f, size.height * 0.72f),
-                            radius = size.width * 0.7f
-                        )
-                    )
-                }
         ) {
             Column(
                 modifier = Modifier
@@ -410,121 +486,197 @@ fun MainGameScreen(viewModel: GameViewModel) {
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-                // 1. Top Bar: Minimalist & Compact
+                // 1. Top Header: Hamburger + Avatar & Level Pill | Large Balance
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Menu button with notification badge for unclaimed quests
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x281E293B))
-                            .border(0.8.dp, GlassBorder, CircleShape)
-                            .clickable { scope.launch { drawerState.open() } }
-                            .testTag("menu_hamburger_btn"),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "Меню",
-                            tint = LiquidGoldStart,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        if (unclaimedQuests > 0) {
+                        // Menu button with notification badge for unclaimed quests
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(DarkSurface)
+                                .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                                .clickable { scope.launch { drawerState.open() } }
+                                .testTag("menu_hamburger_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Меню",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            if (unclaimedQuests > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .offset(x = 2.dp, y = (-2).dp)
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF43F5E))
+                                )
+                            }
+                        }
+
+                        // Avatar + Level pill
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(DarkSurface)
+                                .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+                                .clickable { showLevelPerksModal = true }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                                .testTag("top_level_pill"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 2.dp, y = (-2).dp)
-                                    .sizeIn(minWidth = 15.dp, minHeight = 15.dp)
+                                    .size(20.dp)
                                     .clip(CircleShape)
-                                    .background(EmeraldProfit)
-                                    .padding(horizontal = 2.dp),
+                                    .background(PrimaryActionBlue),
                                 contentAlignment = Alignment.Center
                             ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                            Text(
+                                text = "Ур. ${levelInfo.level}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E))
+                            )
+                        }
+
+                        // Country Selector Pill
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(DarkSurface)
+                                .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+                                .clickable { showCountrySelectionModal = true }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                                .testTag("top_country_pill"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (selectedCountryIso == "AUTO") {
+                                Text("🌐", fontSize = 11.sp)
+                                Text("Авто", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = PrimaryActionBlue)
+                            } else {
+                                CountryFlag(countryIso = selectedCountryIso, modifier = Modifier.size(width = 14.dp, height = 10.dp))
+                                Text(selectedCountryIso, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+
+                    // Balance
+                    Text(
+                        text = GameViewModel.formatMoney(balance),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 19.sp,
+                        color = TextPrimary,
+                        modifier = Modifier
+                            .clickable { showLevelPerksModal = true }
+                            .testTag("balance_pill")
+                    )
+                }
+
+                // 2. Quest / Promo banner below top bar
+                val activeQuest = quests.firstOrNull { !it.isCompleted }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DarkSurface)
+                        .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                        .clickable { currentSubScreen = DrawerDestination.QUESTS }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkSurfaceElevated),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.EmojiEvents,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFBBF24),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            Column {
                                 Text(
-                                    text = "$unclaimedQuests",
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.Black,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    style = androidx.compose.material3.LocalTextStyle.current.copy(
-                                        platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                            includeFontPadding = false
-                                        ),
-                                        lineHeight = 8.5.sp
-                                    ),
+                                    text = activeQuest?.title ?: "Квесты оператора",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = activeQuest?.let { "+${GameViewModel.formatMoney(it.rewardAmount)} ₽" } ?: "Выполняйте задания для бонусов",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary,
                                     maxLines = 1,
                                     softWrap = false
                                 )
                             }
                         }
-                    }
 
-                    // Level XP Indicator Capsule
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0x281E293B))
-                            .border(0.8.dp, LiquidGoldMid.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                            .clickable { showLevelPerksModal = true }
-                            .padding(horizontal = 9.dp, vertical = 5.dp)
-                            .testTag("top_level_pill"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = null,
-                                tint = LiquidGoldStart,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (unclaimedQuests > 0) Color(0xFFF59E0B) else PrimaryActionBlue)
+                                .clickable { currentSubScreen = DrawerDestination.QUESTS }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Text(
-                                text = "Ур. ${levelInfo.level}",
+                                text = if (unclaimedQuests > 0) "Забрать" else "Открыть",
+                                color = Color.White,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = LiquidGoldStart,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "${(levelInfo.progressFraction * 100).toInt()}%",
-                                fontSize = 10.sp,
-                                color = TextSecondary,
-                                maxLines = 1,
-                                softWrap = false
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
-
-                    // Balance Capsule
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0x3D0C261B))
-                            .border(0.8.dp, Color(0x6610B981), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 11.dp, vertical = 5.dp)
-                            .testTag("balance_pill"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = GameViewModel.formatMoney(balance),
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.sp,
-                            color = EmeraldProfit,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
                 }
 
-                // 2. Center Generator Area (Compact card, plenty of space, not stretching edge-to-edge)
+                // 3. Center Generator Area (Authentic White SIM Card + Actions)
+                val current = currentNumber
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -535,29 +687,19 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             indication = null
                         ) {
                             if (!autoSellConfig.isAutoRolling) {
-                                isTappedState = true
                                 viewModel.rollSingle()
-                                scope.launch {
-                                    kotlinx.coroutines.delay(80)
-                                    isTappedState = false
-                                }
                             }
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Floating notification banner overlay (does not shift layout)
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = notification != null,
-                        enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
-                        exit = fadeOut() + slideOutVertically(targetOffsetY = { -it }),
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 8.dp)
-                    ) {
+                    if (notification != null) {
                         Surface(
-                            color = Color(0xF21E293B),
+                            color = Color(0xF2161922),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.20f))
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF252A36)),
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 4.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
@@ -566,7 +708,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                 Icon(
                                     imageVector = Icons.Default.Info,
                                     contentDescription = null,
-                                    tint = LiquidGoldMid,
+                                    tint = PrimaryActionBlue,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -574,7 +716,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                     text = notification ?: "",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = TextPrimary
+                                    color = Color.White
                                 )
                             }
                         }
@@ -586,150 +728,258 @@ fun MainGameScreen(viewModel: GameViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .scale(cardScale)
                     ) {
-                        // Subtle floating XP gained indicator
-                        AnimatedVisibility(
-                            visible = lastXpGained != null,
-                            enter = fadeIn() + slideInVertically(initialOffsetY = { -it }),
-                            exit = fadeOut() + slideOutVertically(targetOffsetY = { -it })
-                        ) {
-                            Box(
+                        // Sleek Dark SIM Card
+                        SimCardView(
+                            phoneNumber = current,
+                            isAutoRolling = autoSellConfig.isAutoRolling
+                        )
+
+                        // Under SIM card info line: Редкий · оценка 17 165 · 1/22 · +10 XP
+                        if (current != null) {
+                            val seriesIndex = remember(current.id) { (abs(current.digits.hashCode()) % 22) + 1 }
+                            val xpReward = remember(current.id) { PlayerProgression.getXpRewardForNumber(current) }
+
+                            Row(
                                 modifier = Modifier
-                                    .padding(bottom = 8.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xE6102B20))
-                                    .border(0.8.dp, EmeraldProfit.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    .padding(top = 10.dp, bottom = 8.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = LiquidGoldStart,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = current.rarity.title,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = current.rarity.primaryColor,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = " • ${GameViewModel.formatMoney(current.value)} ₽",
+                                    fontSize = 11.5.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = " • $seriesIndex/22",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF8A94A6),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Text(
+                                    text = " • +$xpReward XP",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFFFBBF24),
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+
+                            // 5 Action Pills Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val isVaulted = isCurrentSaved || current.isInVault
+                                // Pill 1: В сейф / В сейфе 🔒
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(if (isVaulted) Color(0x1F10B981) else DarkSurface)
+                                        .border(1.dp, if (isVaulted) EmeraldProfit else GlassBorder, RoundedCornerShape(18.dp))
+                                        .clickable { viewModel.saveCurrentToVault() }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                                        .testTag("quick_save_btn"),
+                                    contentAlignment = Alignment.Center
+                                ) {
                                     Text(
-                                        text = "+$lastXpGained XP",
-                                        fontSize = 11.sp,
+                                        text = if (isVaulted) "В сейфе 🔒" else "В сейф",
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = EmeraldProfit
+                                        color = if (isVaulted) EmeraldProfit else Color.White
                                     )
                                 }
-                            }
-                        }
 
-                        // Compact SIM Card View with smooth drop animations
-                        AnimatedContent(
-                            targetState = currentNumber,
-                            transitionSpec = {
-                                (fadeIn(animationSpec = tween(170, easing = LinearOutSlowInEasing)) +
-                                 scaleIn(initialScale = 0.88f, animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)) +
-                                 slideInVertically(initialOffsetY = { 24 }, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)))
-                                .togetherWith(
-                                    fadeOut(animationSpec = tween(100, easing = FastOutLinearInEasing)) +
-                                    scaleOut(targetScale = 0.95f, animationSpec = tween(100))
-                                )
-                            },
-                            label = "sim_card_drop_transition",
-                            contentAlignment = Alignment.Center
-                        ) { animatedSim ->
-                            SimCardView(
-                                phoneNumber = animatedSim
-                            )
-                        }
+                                Spacer(modifier = Modifier.width(6.dp))
 
-                        // Quick Actions (В сейф / Продать) with smooth fade-in
-                        AnimatedVisibility(
-                            visible = currentNumber != null && !autoSellConfig.isAutoRolling,
-                            enter = fadeIn(animationSpec = tween(180)) + slideInVertically(initialOffsetY = { 16 }),
-                            exit = fadeOut(animationSpec = tween(100)) + slideOutVertically(targetOffsetY = { 16 })
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                // Pill 2: Продать
+                                val canQuickSell = !isVaulted
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(DarkSurface)
+                                        .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+                                        .clickable(enabled = canQuickSell) { viewModel.sellCurrent() }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                                        .testTag("quick_sell_btn"),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    val isVaulted = isCurrentSaved || currentNumber?.isInVault == true
-                                     // Save to Vault
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(if (isVaulted) Color(0x3310B981) else Color(0x331E293B))
-                                            .border(
-                                                0.8.dp,
-                                                if (isVaulted) EmeraldProfit.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.15f),
-                                                RoundedCornerShape(18.dp)
-                                            )
-                                            .clickable { viewModel.saveCurrentToVault() }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                            .testTag("quick_save_btn"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Archive,
-                                                contentDescription = null,
-                                                tint = if (isVaulted) EmeraldProfit else LiquidGoldMid,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = if (isVaulted) "В сейфе ✓" else "В сейф (${viewModel.vaultCount}/${viewModel.vaultCapacity})",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isVaulted) EmeraldProfit else TextPrimary,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
+                                    Text(
+                                        text = "Продать",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (canQuickSell) Color.White else TextMuted
+                                    )
+                                }
 
-                                    // Quick Sell
-                                    val canQuickSell = !isVaulted
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(if (canQuickSell) Color(0x330E3022) else Color(0x221E293B))
-                                            .border(
-                                                0.8.dp,
-                                                if (canQuickSell) Color(0x6610B981) else Color.White.copy(alpha = 0.15f),
-                                                RoundedCornerShape(18.dp)
-                                            )
-                                            .clickable(enabled = canQuickSell) { viewModel.sellCurrent() }
-                                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                                            .testTag("quick_sell_btn"),
-                                        contentAlignment = Alignment.Center
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Pill 3: Страна 🌍
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(DarkSurface)
+                                        .border(1.dp, GlassBorder, RoundedCornerShape(18.dp))
+                                        .clickable { showCountrySelectionModal = true }
+                                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                                        .testTag("action_country_btn"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = if (canQuickSell) Icons.Default.AttachMoney else Icons.Default.Lock,
-                                                contentDescription = null,
-                                                tint = if (canQuickSell) EmeraldProfit else TextSecondary,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
+                                        if (selectedCountryIso == "AUTO") {
+                                            Text("🌐", fontSize = 12.sp)
                                             Text(
-                                                text = if (canQuickSell) "Продать (+${GameViewModel.formatMoney(currentNumber?.value ?: 0)})" else "В сейфе 🔒",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = if (canQuickSell) EmeraldProfit else TextSecondary,
-                                                maxLines = 1,
-                                                softWrap = false,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                text = "Авто",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = PrimaryActionBlue
+                                            )
+                                        } else {
+                                            CountryFlag(countryIso = selectedCountryIso, modifier = Modifier.size(width = 14.dp, height = 10.dp))
+                                            Text(
+                                                text = selectedCountryIso,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
                                             )
                                         }
                                     }
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Pill 4: Level perks ✨
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(DarkSurface)
+                                        .border(1.dp, GlassBorder, CircleShape)
+                                        .clickable { showLevelPerksModal = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = "Перки",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Pill 4: Details dialog ↗
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(DarkSurface)
+                                        .border(1.dp, GlassBorder, CircleShape)
+                                        .clickable { selectedNumberForDetail = current },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.NorthEast,
+                                        contentDescription = "Подробнее",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
-                // 3. Compact Roll Controls (Primary roll button + Auto toggle + Settings)
+                // 4. Luck Boost Progress Bar (Pity System)
+                val rollsTillBoost = (100 - luckPityRolls).coerceAtLeast(0)
+                val boostProgress = (luckPityRolls / 100f).coerceIn(0f, 1f)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isLuckBoostActive) Color(0x26F59E0B) else DarkSurface)
+                        .border(
+                            1.dp,
+                            if (isLuckBoostActive) LiquidGoldMid else GlassBorder,
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isLuckBoostActive) Icons.Default.Bolt else Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = if (isLuckBoostActive) LiquidGoldMid else EmeraldProfit,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = if (isLuckBoostActive) "5X УДАЧА АКТИВНА!" else "До 5X удачи: $rollsTillBoost ${pluralizeRolls(rollsTillBoost)}",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLuckBoostActive) LiquidGoldMid else Color.White
+                                )
+                            }
+
+                            Text(
+                                text = if (isLuckBoostActive) "ГОТОВО (100%)" else "$luckPityRolls / 100",
+                                fontSize = 11.sp,
+                                fontWeight = if (isLuckBoostActive) FontWeight.Black else FontWeight.Normal,
+                                color = if (isLuckBoostActive) LiquidGoldMid else TextSecondary
+                            )
+                        }
+
+                        LinearProgressIndicator(
+                            progress = { if (isLuckBoostActive) 1f else boostProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = if (isLuckBoostActive) LiquidGoldMid else EmeraldProfit,
+                            trackColor = DarkSurfaceElevated
+                        )
+
+                        if (isLuckBoostActive) {
+                            Text(
+                                text = "✨ Следующий выпуск гарантирует 5-кратную удачу и редкие номера!",
+                                fontSize = 11.sp,
+                                color = Color(0xFFFFD54F),
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                // 6. Bottom Roll Controls: Auto + Cog + Primary Roll Button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -739,119 +989,137 @@ fun MainGameScreen(viewModel: GameViewModel) {
                 ) {
                     val isAuto = autoSellConfig.isAutoRolling
 
-                    // Main ROLL button
+                    // Multiplier / Auto-roll pill
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(Color(0xE61E293B), Color(0xE60F172A))
-                                )
-                            )
-                            .border(1.dp, LiquidGoldMid.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            .clickable {
-                                if (!isAuto) {
-                                    isTappedState = true
-                                    viewModel.rollSingle()
-                                    scope.launch {
-                                        kotlinx.coroutines.delay(80)
-                                        isTappedState = false
-                                    }
-                                }
-                            }
-                            .testTag("primary_roll_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Casino,
-                                contentDescription = null,
-                                tint = LiquidGoldStart,
-                                modifier = Modifier.size(17.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "КРУТИТЬ (-${viewModel.rollCost} ₽)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Black,
-                                color = LiquidGoldStart,
-                                letterSpacing = 0.5.sp,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-
-                    // Auto-roll toggle button
-                    Box(
-                        modifier = Modifier
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isAuto) Brush.horizontalGradient(listOf(Color(0xE6E11D48), Color(0xE6BE123C)))
-                                else Brush.horizontalGradient(listOf(Color(0x33334155), Color(0x331E293B)))
-                            )
+                            .height(46.dp)
+                            .widthIn(min = 64.dp)
+                            .clip(RoundedCornerShape(23.dp))
+                            .background(if (isAuto) Color(0xFFE11D48) else DarkSurface)
                             .border(
                                 1.dp,
-                                if (isAuto) Color.White.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.15f),
-                                RoundedCornerShape(14.dp)
+                                if (isAuto) Color(0xFFF43F5E) else GlassBorder,
+                                RoundedCornerShape(23.dp)
                             )
                             .clickable { viewModel.toggleAutoRoll() }
-                            .padding(horizontal = 14.dp)
+                            .padding(horizontal = 12.dp)
                             .testTag("bottom_autoroll_pill"),
                         contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (isAuto) Icons.Default.Pause else Icons.Default.FlashOn,
-                                contentDescription = null,
-                                tint = if (isAuto) Color.White else LiquidGoldMid,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isAuto) "СТОП" else "АВТО",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isAuto) Color.White else TextPrimary,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
+                        Text(
+                            text = if (isAuto) "СТОП" else "АВТО",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
 
                     // Auto-sell settings cog
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0x221E293B))
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                            .size(width = 42.dp, height = 46.dp)
+                            .clip(RoundedCornerShape(23.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(23.dp))
                             .clickable { showAutoSellSettingsModal = true }
                             .testTag("auto_sell_settings_btn"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Настройки автокрутки",
-                            tint = Color(0xFF94A3B8),
+                            contentDescription = "Настройки",
+                            tint = TextSecondary,
                             modifier = Modifier.size(18.dp)
                         )
+                    }
+
+                    // Country Selection button
+                    Box(
+                        modifier = Modifier
+                            .size(width = 44.dp, height = 46.dp)
+                            .clip(RoundedCornerShape(23.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(23.dp))
+                            .clickable { showCountrySelectionModal = true }
+                            .testTag("bottom_country_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (selectedCountryIso == "AUTO") {
+                            Text("🌐", fontSize = 17.sp)
+                        } else {
+                            CountryFlag(
+                                countryIso = selectedCountryIso,
+                                modifier = Modifier.size(width = 20.dp, height = 14.dp)
+                            )
+                        }
+                    }
+
+                    // Primary Roll Button: Electric Blue in normal mode, Gold in 5X Luck mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(23.dp))
+                            .background(if (isLuckBoostActive) LiquidGoldMid else PrimaryActionBlue)
+                            .border(
+                                width = 1.dp,
+                                color = if (isLuckBoostActive) Color(0xFFFFE082) else Color(0xFF60A5FA).copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(23.dp)
+                            )
+                            .clickable {
+                                if (!isAuto) {
+                                    viewModel.rollSingle()
+                                }
+                            }
+                            .padding(horizontal = 16.dp)
+                            .testTag("primary_roll_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (isLuckBoostActive) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = Color(0xFF0F172A),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Text(
+                                    text = if (isLuckBoostActive) "ВЫПУСТИТЬ (5X)" else "Выпустить ещё",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLuckBoostActive) Color(0xFF0F172A) else Color.White
+                                )
+                            }
+
+                            Text(
+                                text = GameViewModel.formatMoney(viewModel.rollCost),
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isLuckBoostActive) Color(0xFF0F172A) else Color.White
+                            )
+                        }
                     }
                 }
 
                 // 4. Authentic Game Bottom Navigation Dock
                 Surface(
-                    color = Color(0xF50D111A),
+                    color = DarkSurface,
                     modifier = Modifier.fillMaxWidth(),
-                    border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.08f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GlassBorder)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -859,7 +1127,7 @@ fun MainGameScreen(viewModel: GameViewModel) {
                         BottomNavTabItem(
                             icon = Icons.Default.Inventory2,
                             label = "Инвентарь",
-                            badgeText = "${inventory.size}",
+                            badgeText = "${inventory.count { !it.isInVault }}",
                             onClick = { currentSubScreen = DrawerDestination.INVENTORY }
                         )
 
@@ -915,9 +1183,9 @@ fun MainGameScreen(viewModel: GameViewModel) {
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(42.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0x331E293B))
+                                    .background(DarkSurface)
                                     .border(1.dp, GlassBorder, CircleShape)
                                     .clickable { currentSubScreen = DrawerDestination.NONE }
                                     .testTag("subscreen_back_btn"),
@@ -926,18 +1194,19 @@ fun MainGameScreen(viewModel: GameViewModel) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "Назад",
-                                    tint = LiquidGoldStart,
-                                    modifier = Modifier.size(20.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = when (currentSubScreen) {
                                     DrawerDestination.QUESTS -> "Задания и Награды"
-                                    DrawerDestination.INVENTORY -> "Инвентарь"
+                                    DrawerDestination.INVENTORY -> "Коллекция номеров"
+                                    DrawerDestination.VAULT -> "Сейф"
                                     DrawerDestination.UPGRADES -> "Магазин и Улучшения"
                                     DrawerDestination.STATS -> "Досье и Справочник"
-                                    DrawerDestination.DIAGNOSTICS -> "Диагностика Room DB"
+                                    DrawerDestination.OTA_UPDATES -> "Обновления игры (OTA)"
                                     else -> ""
                                 },
                                 fontWeight = FontWeight.Black,
@@ -949,17 +1218,36 @@ fun MainGameScreen(viewModel: GameViewModel) {
                         when (currentSubScreen) {
                             DrawerDestination.QUESTS -> QuestsTab(
                                 quests = quests,
-                                onClaimReward = { viewModel.claimQuestReward(it) }
+                                onClaimReward = { viewModel.claimQuestReward(it) },
+                                onRefreshQuests = { viewModel.refreshQuests() }
                             )
                             DrawerDestination.INVENTORY -> InventoryTab(
                                 inventory = inventory,
                                 activeSim = activeSim,
                                 vaultCount = viewModel.vaultCount,
                                 vaultCapacity = viewModel.vaultCapacity,
+                                inventoryCapacity = viewModel.inventoryCapacity,
+                                initialVaultSection = false,
+                                getEffectiveSellPrice = { viewModel.getEffectiveSellPrice(it) },
                                 onSetActiveSim = { viewModel.setActiveSim(it) },
                                 onToggleVault = { viewModel.toggleVaultStatus(it) },
                                 onSellSim = { viewModel.sellFromInventory(it) },
-                                onSellAllCommon = { viewModel.sellAllCommonFromInventory() }
+                                onSellAllCommon = { viewModel.sellAllCommonFromInventory() },
+                                onSellAllInventory = { viewModel.sellAllFromInventory() }
+                            )
+                            DrawerDestination.VAULT -> InventoryTab(
+                                inventory = inventory,
+                                activeSim = activeSim,
+                                vaultCount = viewModel.vaultCount,
+                                vaultCapacity = viewModel.vaultCapacity,
+                                inventoryCapacity = viewModel.inventoryCapacity,
+                                initialVaultSection = true,
+                                getEffectiveSellPrice = { viewModel.getEffectiveSellPrice(it) },
+                                onSetActiveSim = { viewModel.setActiveSim(it) },
+                                onToggleVault = { viewModel.toggleVaultStatus(it) },
+                                onSellSim = { viewModel.sellFromInventory(it) },
+                                onSellAllCommon = { viewModel.sellAllCommonFromInventory() },
+                                onSellAllInventory = { viewModel.sellAllFromInventory() }
                             )
                             DrawerDestination.UPGRADES -> UpgradesTab(
                                 balance = balance,
@@ -968,12 +1256,10 @@ fun MainGameScreen(viewModel: GameViewModel) {
                             )
                             DrawerDestination.STATS -> StatsTab(
                                 stats = stats,
-                                levelInfo = levelInfo,
-                                onOpenDiagnostics = { currentSubScreen = DrawerDestination.DIAGNOSTICS }
+                                levelInfo = levelInfo
                             )
-                            DrawerDestination.DIAGNOSTICS -> DiagnosticLogView(
-                                viewModel = viewModel,
-                                onClose = { currentSubScreen = DrawerDestination.NONE }
+                            DrawerDestination.OTA_UPDATES -> OtaUpdateScreen(
+                                viewModel = viewModel
                             )
                             else -> {}
                         }
@@ -1007,10 +1293,10 @@ fun BottomNavTabItem(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (isBadgeHighlight) EmeraldProfit else LiquidGoldStart,
+                tint = if (isBadgeHighlight) EmeraldProfit else TextSecondary,
                 modifier = Modifier
                     .padding(end = if (badgeText != null && isBadgeHighlight) 4.dp else 0.dp)
-                    .size(20.dp)
+                    .size(19.dp)
             )
             if (badgeText != null && isBadgeHighlight) {
                 Box(
@@ -1065,6 +1351,17 @@ fun BottomNavTabItem(
                 )
             }
         }
+    }
+}
+
+private fun pluralizeRolls(count: Int): String {
+    val mod10 = count % 10
+    val mod100 = count % 100
+    return when {
+        mod100 in 11..19 -> "номеров"
+        mod10 == 1 -> "номер"
+        mod10 in 2..4 -> "номера"
+        else -> "номеров"
     }
 }
 

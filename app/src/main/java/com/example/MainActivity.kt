@@ -9,10 +9,15 @@ import com.example.ui.MainGameScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.GameViewModel
 
+import androidx.activity.SystemBarStyle
+
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
+    enableEdgeToEdge(
+        statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+    )
     setContent {
       MyApplicationTheme {
         val gameViewModel: GameViewModel = viewModel()
